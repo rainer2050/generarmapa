@@ -9,6 +9,13 @@ from dateutil.relativedelta import relativedelta
 import re
 from math import radians, sin, cos, sqrt, atan2
 
+
+# Esto oculta el menú superior derecho y el botón de GitHub
+st.set_page_config(
+    page_title="Mi Gran Aplicación",
+    initial_sidebar_state="collapsed",
+    menu_items=None  # Esto remueve las opciones del menú por defecto
+)
 # =========================================
 # CONFIG
 # =========================================
