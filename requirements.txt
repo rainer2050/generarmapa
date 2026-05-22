@@ -1,0 +1,8 @@
+requests
+pandas
+numpy
+openpyxl
+xlsxwriter
+beautifulsoup4
+python-dateutil
+lxml
