@@ -19,8 +19,7 @@ from math import radians, sin, cos, sqrt, atan2
 st.set_page_config(
     page_title="SIGOF GIS",
     layout="wide",
-    initial_sidebar_state="collapsed",
-    menu_items=None
+    initial_sidebar_state="collapsed"
 )
 
 st.title("🛰️ SIGOF GIS PENDIENTES")
@@ -133,12 +132,8 @@ if st.button("🔐 INICIAR SESIÓN"):
 
             st.stop()
 
-        defecto_iduunn = int(
-            match.group(1)
-        )
-
         st.success(
-            f"✅ Sesión iniciada - Unidad {defecto_iduunn}"
+            "✅ Sesión iniciada correctamente"
         )
 
         st.session_state["session"] = session
@@ -258,7 +253,7 @@ if st.session_state.get("logueado"):
                 f"ajax_ordenes_historico_xls/"
                 f"U/{hoy}/{hoy}/0/0/0/"
                 f"{ruta}/0/0/0/"
-                f"LSC/0/0/9/0"
+                f"LSC/0/9/0"
             )
 
             st.code(url_pendientes)
@@ -315,7 +310,7 @@ if st.session_state.get("logueado"):
             ].astype(str).unique()
 
             # =================================================
-            # DESCARGAR HISTÓRICOS
+            # HISTÓRICOS
             # =================================================
 
             st.info(
@@ -324,11 +319,11 @@ if st.session_state.get("logueado"):
 
             dfs_hist = []
 
-            progress_hist = st.progress(0)
-
             total_periodos = len(
                 periodos_seleccionados
             )
+
+            progress_hist = st.progress(0)
 
             for i, periodo in enumerate(
                 periodos_seleccionados
@@ -340,7 +335,7 @@ if st.session_state.get("logueado"):
                     f"ajax_ordenes_historico_xls/"
                     f"U/{hoy}/{hoy}/0/0/0/"
                     f"{ruta}/0/0/0/"
-                    f"0/0/0/9/{periodo}"
+                    f"0/0/9/{periodo}"
                 )
 
                 st.code(url_hist)
@@ -402,7 +397,7 @@ if st.session_state.get("logueado"):
             )
 
             # =================================================
-            # DETECTAR COLUMNAS GPS
+            # DETECTAR LAT/LON
             # =================================================
 
             lat_col = None
@@ -467,11 +462,11 @@ if st.session_state.get("logueado"):
             ].median()
 
             # =================================================
-            # PROCESAR GIS
+            # PROCESAMIENTO GIS
             # =================================================
 
             st.info(
-                "🛰️ Procesando triangulación GIS..."
+                "🛰️ Procesando coordenadas..."
             )
 
             resultados = []
@@ -535,10 +530,6 @@ if st.session_state.get("logueado"):
 
                     dispersion = matriz.max()
 
-                    # =========================================
-                    # REBOTADO
-                    # =========================================
-
                     if dispersion > 500:
 
                         distancias = []
@@ -561,10 +552,6 @@ if st.session_state.get("logueado"):
                         )
 
                         estado = "REBOTADO"
-
-                    # =========================================
-                    # VALIDADO
-                    # =========================================
 
                     else:
 
@@ -652,7 +639,7 @@ if st.session_state.get("logueado"):
                 )
 
             st.success(
-                "✅ Excel GIS generado correctamente"
+                "✅ Excel generado correctamente"
             )
 
             with open(
