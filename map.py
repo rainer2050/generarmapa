@@ -203,7 +203,7 @@ if st.button("🛰️ PROCESAR PENDIENTES"):
                 f"{ruta}/0/0/0/0/0/0/9/{periodo}"
             )
 
-            st.code(url_hist)
+           # st.code(url_hist)
             rh = session.get(url_hist, headers=HEADERS, timeout=180)
 
             if rh.status_code == 200 and rh.content[:2] == b"PK":
