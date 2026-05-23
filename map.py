@@ -248,14 +248,12 @@ if st.session_state.get("logueado"):
             )
 
             url_pendientes = (
-                f"http://sigof.distriluz.com.pe/"
-                f"plus/Reportes/"
-                f"ajax_ordenes_historico_xls/"
-                f"U/{hoy}/{hoy}/0/0/0/"
-                f"{ruta}/0/0/0/"
-                f"LSC/0/9/0"
-            )
-
+    f"http://sigof.distriluz.com.pe/"
+    f"plus/Reportes/"
+    f"ajax_ordenes_historico_xls/"
+    f"U/{hoy}/{hoy}/0/0/0/"
+    f"{ruta}/0/0/0/0/0/0/9/{periodos_seleccionados[-1]}"
+)
             st.code(url_pendientes)
 
             r = session.get(
