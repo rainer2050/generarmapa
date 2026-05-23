@@ -39,7 +39,7 @@ st.markdown(
     }
     </style>
     """,
-    unsafe_allow_html=True
+    #unsafe_allow_html=True
 )
 # =========================================================
 # CONFIG GENERAL Y ESTADOS
