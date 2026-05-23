@@ -80,7 +80,7 @@ password = st.text_input(
 )
 
 # =========================================================
-# INICIAR SESIÓN
+# LOGIN BUTTON
 # =========================================================
 
 if st.button("🔐 INICIAR SESIÓN"):
@@ -142,7 +142,6 @@ if st.button("🔐 INICIAR SESIÓN"):
         )
 
         st.session_state["session"] = session
-        st.session_state["defecto_iduunn"] = defecto_iduunn
         st.session_state["logueado"] = True
 
     except Exception as e:
@@ -158,10 +157,9 @@ if st.session_state.get("logueado"):
     st.subheader("⚙️ Configuración GIS")
 
     # =====================================================
-    # CICLO Y RUTA
+    # RUTA
     # =====================================================
 
-  
     ruta = st.text_input(
         "Ruta",
         placeholder="Ejemplo: 65453"
@@ -223,7 +221,7 @@ if st.session_state.get("logueado"):
     )
 
     # =====================================================
-    # BOTÓN PROCESAR
+    # PROCESAR
     # =====================================================
 
     if st.button("🛰️ PROCESAR PENDIENTES"):
@@ -259,9 +257,11 @@ if st.session_state.get("logueado"):
                 f"plus/Reportes/"
                 f"ajax_ordenes_historico_xls/"
                 f"U/{hoy}/{hoy}/0/0/0/"
-                f"{codigo_ciclo}/{ruta}/"
-                f"0/0/0/LSC/0/9/0"
+                f"{ruta}/0/0/0/"
+                f"LSC/0/0/9/0"
             )
+
+            st.code(url_pendientes)
 
             r = session.get(
                 url_pendientes,
@@ -315,7 +315,7 @@ if st.session_state.get("logueado"):
             ].astype(str).unique()
 
             # =================================================
-            # HISTÓRICOS
+            # DESCARGAR HISTÓRICOS
             # =================================================
 
             st.info(
@@ -339,9 +339,11 @@ if st.session_state.get("logueado"):
                     f"plus/Reportes/"
                     f"ajax_ordenes_historico_xls/"
                     f"U/{hoy}/{hoy}/0/0/0/"
-                    f"{codigo_ciclo}/{ruta}/"
-                    f"0/0/0/0/0/9/{periodo}"
+                    f"{ruta}/0/0/0/"
+                    f"0/0/0/9/{periodo}"
                 )
+
+                st.code(url_hist)
 
                 rh = session.get(
                     url_hist,
@@ -400,7 +402,7 @@ if st.session_state.get("logueado"):
             )
 
             # =================================================
-            # DETECTAR LAT/LON
+            # DETECTAR COLUMNAS GPS
             # =================================================
 
             lat_col = None
@@ -465,7 +467,7 @@ if st.session_state.get("logueado"):
             ].median()
 
             # =================================================
-            # GIS
+            # PROCESAR GIS
             # =================================================
 
             st.info(
