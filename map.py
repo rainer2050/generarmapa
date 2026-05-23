@@ -161,14 +161,10 @@ if st.session_state.get("logueado"):
     # CICLO Y RUTA
     # =====================================================
 
-    codigo_ciclo = st.text_input(
-        "Código ciclo",
-        value="65453"
-    )
-
+  
     ruta = st.text_input(
         "Ruta",
-        placeholder="Ejemplo: 83189570"
+        placeholder="Ejemplo: 65453"
     )
 
     # =====================================================
