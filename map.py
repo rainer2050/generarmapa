@@ -163,7 +163,7 @@ if st.button("🛰️ PROCESAR PENDIENTES"):
             f"{ruta}/0/0/0/0/0/0/9/{mes_1}"
         )
 
-        st.code(url_pendientes)  # Muestra en pantalla la URL armada para control visual
+       # st.code(url_pendientes)  # Muestra en pantalla la URL armada para control visual
 
         r = session.get(url_pendientes, headers=HEADERS, timeout=180)
 
