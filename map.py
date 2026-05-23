@@ -19,12 +19,28 @@ from math import radians, sin, cos, sqrt, atan2
 st.set_page_config(
     page_title="SIGOF GIS",
     layout="wide",
-    initial_sidebar_state="collapsed",
-    menu_items=None # 🔒 Oculta la opción "View app source" para que no vean tu GitHub desde la app
+    initial_sidebar_state="collapsed"
 )
 
 st.title("🛰️ SIGOF GIS PENDIENTES")
 
+# 🔒 OCULTAR ICONO DE GITHUB Y BARRA SUPERIOR
+st.markdown(
+    """
+    <style>
+    /* Oculta la barra superior completa donde aparece GitHub, Share y Star */
+    header[data-testid="stHeader"] {
+        visibility: hidden;
+        height: 0rem;
+    }
+    /* Asegura que el contenedor principal no deje un espacio en blanco arriba */
+    div[data-testid="stAppViewBlockContainer"] {
+        padding-top: 2rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 # =========================================================
 # CONFIG GENERAL Y ESTADOS
 # =========================================================
