@@ -252,7 +252,7 @@ if st.session_state.get("logueado"):
     f"plus/Reportes/"
     f"ajax_ordenes_historico_xls/"
     f"U/{hoy}/{hoy}/0/0/0/"
-    f"{ruta}/0/0/0/0/0/0/9/{periodos_seleccionados[-1]}"
+    f"{ruta}/0/0/0/0/0/0/9/{periodos_seleccionados}"
 )
             st.code(url_pendientes)
 
