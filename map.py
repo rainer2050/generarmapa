@@ -319,94 +319,103 @@ if st.session_state["logueado"]:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            # =========================================================
-            # RENDERIZACIÓN MAPA INTERACTIVO FOLIUM
-            # =========================================================
-            st.subheader("🗺️ MAPA INTERACTIVO DE CONSISTENCIA")
-            df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
+           # =========================================================
+# RENDERIZACIÓN MAPA INTERACTIVO FOLIUM
+# =========================================================
+st.subheader("🗺️ MAPA INTERACTIVO DE CONSISTENCIA")
 
-            mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=13, tiles=None)
-            plugins.Fullscreen(
-    position="topleft",           # Ubicación del botón (arriba a la izquierda)
-    title="Ver en pantalla completa", 
-    title_cancel="Salir de pantalla completa",
-    force_separate_button=True
-).add_to(mapa)
-            folium.TileLayer("OpenStreetMap", name="Mapa Base").add_to(mapa)
-            folium.TileLayer(
-                tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-                attr="Google Earth",
-                name="Vista Satélite"
-            ).add_to(mapa)
-
-            
+try:
+    df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
     
-            cluster = MarkerCluster(
-                name="Agrupaciones de Suministros",
-                disableClusteringAtZoom=12,
-                showCoverageOnHover=False
-            ).add_to(mapa)
+    # Se añade la altura explícita aquí para que st.html lo renderice correctamente
+    mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=13, tiles=None, height=850)
 
-            for _, row in df_mapa.iterrows():
-                color_icono = "green"
-                if row["estado_gps"] == "REBOTADO":
-                    color_icono = "red"
-                elif row["estado_gps"] == "UNICO":
-                    color_icono = "blue"
+    # 1. Componentes globales (Pantalla completa y mapas base)
+    plugins.Fullscreen(
+        position="topleft",
+        title="Ver en pantalla completa",
+        title_cancel="Salir de pantalla completa",
+        force_separate_button=True
+    ).add_to(mapa)
 
-                    plugins.Search(
-    layer=cluster,                      # Busca dentro del grupo de suministros
-    geom_type="Point",                  # Tipo de geometría
-    placeholder="Buscar suministro...",  # Texto de ayuda en la barra
-    collapsed=True,                     # Se oculta en un botón de lupa por defecto
-    search_label="popup"                # Busca coincidencias dentro del texto del popup
-).add_to(mapa)
+    folium.TileLayer("OpenStreetMap", name="Mapa Base").add_to(mapa)
+    folium.TileLayer(
+        tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+        attr="Google Earth",
+        name="Vista Satélite"
+    ).add_to(mapa)
 
-                popup_html = (
-                    f"<b>Suministro:</b> {row[col_suministro]}<br>"
-                    f"<b>Estado:</b> {row['estado_gps']}<br>"
-                    f"<b>Dispersión:</b> {row['dispersion_m']} m<br>"
-                    f"<a href='{row['google_maps']}' target='_blank'>🌍 Abrir en Google Maps</a>"
-                )
+    # 2. Inicialización del Cluster
+    cluster = MarkerCluster(
+        name="Agrupaciones de Suministros",
+        disableClusteringAtZoom=12,
+        showCoverageOnHover=False
+    ).add_to(mapa)
 
-                folium.Marker(
-                    location=[row["latitud_validada"], row["longitud_validada"]],
-                    popup=folium.Popup(popup_html, max_width=220),
-                    icon=folium.Icon(color=color_icono, icon="info-sign")
-                ).add_to(cluster)
+    # Mapeo de colores dinámicos según el estado (Formato RGBA para el fondo)
+    colores_estado = {
+        "REBOTADO": "rgba(231, 76, 60, 0.95)",  # Rojo
+        "UNICO": "rgba(41, 128, 185, 0.95)",    # Azul
+    }
+    color_defecto = "rgba(46, 204, 113, 0.95)"   # Verde
 
-                folium.Marker(
-                    location=[row["latitud_validada"], row["longitud_validada"]],
-                    icon=folium.DivIcon(
-                        icon_size=(80, 25),
-                        icon_anchor=(50, -13),
-                        html=f"""
-                        <div style="
-                           width: 100%; 
-            height: 100%; 
-            box-sizing: border-box; 
-            font-size: 14px; 
-            font-weight: bold; 
-            color: white; 
-            background: rgba(41, 128, 185, 0.95); 
-            border-radius: 4px; 
-            border: 1px solid #2c3e50; 
-            text-align: center; 
-            line-height: 23px; 
-            overflow: hidden; 
-            white-space: nowrap; 
-            text-overflow: ellipsis;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
-                        ">
-                            {row[col_suministro]}
-                        </div>
-                        """
-                    )
-                ).add_to(cluster)
+    # 3. Bucle de renderizado unificado
+    for _, row in df_mapa.iterrows():
+        estado = row["estado_gps"]
+        bg_color = colores_estado.get(estado, color_defecto)
+        
+        # Diseño del Popup con HTML estructurado
+        popup_html = (
+            f"<div style='font-family: sans-serif; font-size: 12px;'>"
+            f"<b>Suministro:</b> {row[col_suministro]}<br>"
+            f"<b>Estado:</b> {estado}<br>"
+            f"<b>Dispersión:</b> {row['dispersion_m']} m<br>"
+            f"<hr style='margin: 5px 0; border: 0; border-top: 1px solid #ccc;'>"
+            f"<a href='{row['google_maps']}' target='_blank' style='color: #2980b9; text-decoration: none; font-weight: bold;'>🌍 Abrir en Google Maps</a>"
+            f"</div>"
+        )
+        
+        # Marcador único interactivo por coordenada
+        folium.Marker(
+            location=[row["latitud_validada"], row["longitud_validada"]],
+            popup=folium.Popup(popup_html, max_width=220),
+            icon=folium.DivIcon(
+                icon_size=(90, 25),
+                icon_anchor=(45, 12),
+                html=f"""
+                <div style="
+                    width: 100%; 
+                    height: 100%; 
+                    box-sizing: border-box; 
+                    font-size: 13px; 
+                    font-weight: bold; 
+                    color: white; 
+                    background: {bg_color}; 
+                    border-radius: 4px; 
+                    border: 1px solid rgba(0,0,0,0.2); 
+                    text-align: center; 
+                    line-height: 23px; 
+                    overflow: hidden; 
+                    white-space: nowrap; 
+                    text-overflow: ellipsis;
+                    box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+                ">
+                    <a href="#" onclick="this.closest('.leaflet-marker-icon').click(); return false;" style="color: inherit; text-decoration: none; display: block; width: 100%; height: 100%;">
+                        {row[col_suministro]}
+                    </a>
+                </div>
+                """
+            )
+        ).add_to(cluster)
 
-            folium.LayerControl(position="topright", collapsed=True).add_to(mapa)
-            mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=13, tiles=None, height=800)
-            st.iframe(srcdoc=mapa_html, height=850, scrolling=True)
+    # 4. Control de capas e inyección moderna en Streamlit
+    folium.LayerControl(position="topright", collapsed=True).add_to(mapa)
+    
+    # Se genera el HTML del mapa
+    mapa_html = mapa._repr_html_()
+    
+    # Corrección definitiva: Inyección sin librerías externas ni advertencias obsoletas
+    st.html(mapa_html)
 
-        except Exception as e:
-            st.error(f"Ocurrió un error general durante el proceso: {e}")
+except Exception as e:
+    st.error(f"Ocurrió un error general durante el proceso: {e}")
