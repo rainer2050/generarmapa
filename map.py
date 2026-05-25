@@ -405,7 +405,7 @@ if st.session_state["logueado"]:
                 ).add_to(cluster)
 
             folium.LayerControl(position="topright", collapsed=True).add_to(mapa)
-            mapa_html = mapa._repr_html_()
+            mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=13, tiles=None, height=800)
             st.iframe(srcdoc=mapa_html, height=850, scrolling=True)
 
         except Exception as e:
