@@ -747,7 +747,7 @@ if "df_final" in st.session_state:
 
             popup = (
                 f"<b>Suministro:</b> "
-                f"{row.iloc[3]}<br>"
+                f"{row.iloc[2]}<br>"
                 f"<b>Estado:</b> "
                 f"{row['estado_gps']}<br>"
                 f"<b>Dispersión:</b> "
