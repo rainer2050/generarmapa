@@ -330,7 +330,7 @@ if st.session_state["logueado"]:
     position="topleft",           # Ubicación del botón (arriba a la izquierda)
     title="Ver en pantalla completa", 
     title_cancel="Salir de pantalla completa",
-    force_separate_button=Trueew
+    force_separate_button=True
 ).add_to(mapa)
             folium.TileLayer("OpenStreetMap", name="Mapa Base").add_to(mapa)
             folium.TileLayer(
