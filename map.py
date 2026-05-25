@@ -4,7 +4,8 @@ import pandas as pd
 import numpy as np
 import folium
 import streamlit.components.v1 as components
-
+# ESTA LÍNEA CORRIGE EL ERROR:
+from folium import plugins 
 from folium.plugins import MarkerCluster
 from bs4 import BeautifulSoup
 from io import BytesIO
