@@ -23,14 +23,13 @@ st.set_page_config(
 
 st.title("🛰️ SIGOF GIS INTELIGENTE")
 
-# Inicializar estados de sesión si no existen
 if "logueado" not in st.session_state:
     st.session_state["logueado"] = False
 if "session" not in st.session_state:
     st.session_state["session"] = None
 
 # =========================================================
-# CONFIG ENVIROMENT & HEADERS
+# CONFIG
 # =========================================================
 LOGIN_URL = "http://sigof.distriluz.com.pe/plus/usuario/login"
 HEADERS = {
@@ -39,10 +38,10 @@ HEADERS = {
 }
 
 # =========================================================
-# FUNCIONES MATEMÁTICAS
+# FUNCIONES
 # =========================================================
 def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000  # Radio de la Tierra en metros
+    R = 6371000
     dlat = radians(lat2 - lat1)
     dlon = radians(lon2 - lon1)
     a = (
@@ -54,7 +53,7 @@ def haversine(lat1, lon1, lat2, lon2):
     return 2 * R * atan2(sqrt(a), sqrt(1 - a))
 
 # =========================================================
-# LOGIN DE USUARIO
+# LOGIN
 # =========================================================
 if not st.session_state["logueado"]:
     st.subheader("🔑 Autenticación de Sistema")
@@ -102,18 +101,17 @@ else:
         st.rerun()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL (PROCESAMIENTO GIS)
+# APP PRINCIPAL
 # =========================================================
 if st.session_state["logueado"]:
-    st.subheader("⚙️ CONFIGURACIÓN DE PARÁMETROS")
+    st.subheader("⚙️ CONFIGURACIÓN")
 
     col_r, col_m = st.columns([1, 2])
     with col_r:
-        ruta = st.text_input("Ingrese número de ruta", placeholder="Ejemplo: 46516")
+        ruta = st.text_input("Ingrese ruta", placeholder="Ejemplo: 46516")
     with col_m:
-        tipo_mapa = st.radio("Filtro de mapa:", ["SOLO PENDIENTES", "TODA LA RUTA"], horizontal=True)
+        tipo_mapa = st.radio("Tipo de mapa", ["SOLO PENDIENTES", "TODA LA RUTA"], horizontal=True)
 
-    # Cálculo dinámico de periodos históricos disponibles
     actual = datetime.now()
     mes_1 = (actual - relativedelta(months=1)).strftime("%Y%m")
     mes_2 = (actual - relativedelta(months=2)).strftime("%Y%m")
@@ -128,41 +126,39 @@ if st.session_state["logueado"]:
             mes = 12
             anio -= 1
 
-    periodos_seleccionados = st.multiselect("Seleccione Períodos Históricos a evaluar:", periodos, default=default_periodos)
+    periodos_seleccionados = st.multiselect("Períodos históricos", periodos, default=default_periodos)
 
-    if st.button("🛰️ PROCESAR ALGORITMO GIS", use_container_width=True):
+    if st.button("🛰️ PROCESAR GIS", use_container_width=True):
         try:
             session = st.session_state["session"]
             hoy = datetime.now().strftime("%Y-%m-%d")
 
-            # Construcción de URL Base dinámica
-            suffix = "LSC/0/9/0" if tipo_mapa == "SOLO PENDIENTES" else "0/0/9/0"
-            url_base = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/{suffix}"
+            if tipo_mapa == "SOLO PENDIENTES":
+                url_base = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/LSC/0/9/0"
+            else:
+                url_base = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/0/0/9/0"
 
-            with st.spinner("Descargando data maestra base..."):
-                r = session.get(url_base, headers=HEADERS, timeout=180)
-                if r.status_code != 200 or r.content[:2] != b"PK":
-                    st.error("❌ El servidor SIGOF no retornó un archivo Excel válido para la ruta especificada.")
-                    st.stop()
-                
-                df_base = pd.read_excel(BytesIO(r.content))
+            r = session.get(url_base, headers=HEADERS, timeout=180)
+            if r.status_code != 200 or r.content[:2] != b"PK":
+                st.error("❌ Error descargando data base.")
+                st.stop()
+            
+            df_base = pd.read_excel(BytesIO(r.content))
 
-            # Identificación automática de columna Suministro
             col_suministro = next((c for c in df_base.columns if "suministro" in str(c).lower()), None)
             if not col_suministro:
-                st.error("❌ No se encontró la columna de suministros obligatoria en el reporte.")
+                st.error("❌ No existe columna suministro")
                 st.stop()
 
             suministros = df_base[col_suministro].astype(str).unique()
             dfs_hist = []
 
-            # Loop de descarga por periodos históricos con barra de progreso
             total = len(periodos_seleccionados)
             progress = st.progress(0)
             estado = st.empty()
 
             for i, periodo in enumerate(periodos_seleccionados):
-                estado.text(f"📥 Descargando e indexando historial técnico: {i+1}/{total} (Periodo {periodo})")
+                estado.text(f"Procesando {i+1}/{total}")
                 url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/0/0/9/{periodo}"
                 
                 rh = session.get(url_hist, headers=HEADERS, timeout=180)
@@ -178,20 +174,18 @@ if st.session_state["logueado"]:
             progress.empty()
 
             if not dfs_hist:
-                st.error("❌ No se hallaron registros históricos para los periodos seleccionados.")
+                st.error("❌ Sin históricos")
                 st.stop()
 
             fusionado = pd.concat(dfs_hist, ignore_index=True)
 
-            # Identificación de coordenadas GPS
             lat_col = next((c for c in fusionado.columns if "lat" in str(c).lower()), None)
             lon_col = next((c for c in fusionado.columns if "lon" in str(c).lower()), None)
 
             if not lat_col or not lon_col:
-                st.error("❌ Columnas de coordenadas geográficas (Lat/Lon) ausentes en el set de datos.")
+                st.error("❌ Sin columnas GPS")
                 st.stop()
 
-            # Sanitización de datos espaciales
             fusionado[lat_col] = pd.to_numeric(fusionado[lat_col], errors="coerce")
             fusionado[lon_col] = pd.to_numeric(fusionado[lon_col], errors="coerce")
             fusionado = fusionado[(fusionado[lat_col] != 0) & (fusionado[lon_col] != 0)].dropna(subset=[lat_col, lon_col])
@@ -199,7 +193,6 @@ if st.session_state["logueado"]:
             centro_lat = fusionado[lat_col].median()
             centro_lon = fusionado[lon_col].median()
 
-            # Procesamiento de Clústeres por Suministro (Algoritmo Haversine)
             resultados = []
             grupos = fusionado.groupby(col_suministro)
             total_grupos = len(grupos)
@@ -247,85 +240,81 @@ if st.session_state["logueado"]:
 
             progress_gis.empty()
 
-            # Ensamble final de la estructura de datos
             df_gps = pd.DataFrame(resultados)
             df_final = df_base.merge(df_gps, on=col_suministro, how="left")
             
-            # Guardado en buffer de memoria (Evita lecturas en disco local del servidor)
             output_excel = BytesIO()
             with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
-                df_final.to_excel(writer, index=False, sheet_name="GIS_VALIDADO")
+                df_final.to_excel(writer, index=False, sheet_name="GIS")
             
             st.session_state["df_final"] = df_final
             st.session_state["excel_bytes"] = output_excel.getvalue()
             st.session_state["col_suministro"] = col_suministro
-            st.session_state["ruta_activa"] = ruta
+            st.session_state["salida"] = f"GIS_{ruta}.xlsx"
 
-            st.success(f"✅ Análisis completado. {len(df_base):,} registros procesados.")
+            st.success("✅ GIS generado correctamente")
 
         except Exception as e:
-            st.error(f"Fallo crítico en el procesamiento: {str(e)}")
+            st.error(str(e))
 
 # =========================================================
-# VISTA DE RESULTADOS ANALÍTICOS
+# MOSTRAR RESULTADOS
 # =========================================================
 if "df_final" in st.session_state:
     df_final = st.session_state["df_final"]
     excel_bytes = st.session_state["excel_bytes"]
     col_suministro = st.session_state["col_suministro"]
-    ruta_activa = st.session_state["ruta_activa"]
+    salida = st.session_state["salida"]
 
-    st.write("---")
     st.download_button(
-        label="📥 DESCARGAR INFORME EXCEL PROCESADO",
+        label="📥 DESCARGAR EXCEL FINAL",
         data=excel_bytes,
-        file_name=f"GIS_VALIDADO_RUTA_{ruta_activa}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        use_container_width=True
+        file_name=salida,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-    # Modularización por pestañas para optimizar espacio en pantalla
-    tab_mapa, tab_datos = st.tabs(["🗺️ Visualización de Georreferenciación", "📊 Matriz de Datos General"])
+    st.subheader("🗺️ MAPA GIS")
 
-    with tab_mapa:
-        df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
+    df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
 
-        if len(df_mapa) > 0:
-            c_lat = df_mapa["latitud_validada"].median()
-            c_lon = df_mapa["longitud_validada"].median()
+    if len(df_mapa) > 0:
+        centro_lat = df_mapa["latitud_validada"].median()
+        centro_lon = df_mapa["longitud_validada"].median()
 
-            mapa = folium.Map(location=[c_lat, c_lon], zoom_start=14)
+        mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=15)
 
-            for _, row in df_mapa.iterrows():
-                if row["estado_gps"] == "REBOTADO":
-                    color = "red"
-                elif row["estado_gps"] == "UNICO":
-                    color = "blue"
-                else:
-                    color = "green"
+        for _, row in df_mapa.iterrows():
+            color = "green"
+            if row["estado_gps"] == "REBOTADO":
+                color = "red"
+            elif row["estado_gps"] == "UNICO":
+                color = "blue"
 
-                popup_html = f"""
-                <div style='font-family: Arial, sans-serif; font-size: 12px;'>
-                    <b>Suministro:</b> {row[col_suministro]}<br>
-                    <b>Estado GPS:</b> <span style='color:{color}; font-weight:bold;'>{row['estado_gps']}</span><br>
-                    <b>Dispersión:</b> {row['dispersion_m']} m<br>
-                    <a href='{row['google_maps']}' target='_blank'>🧭 Ver en Google Maps</a>
-                </div>
-                """
+            # Conversión explícita a string de los datos numéricos para evitar que Folium falle
+            sum_str = str(row[col_suministro])
+            disp_str = str(row['dispersion_m'])
+            est_str = str(row['estado_gps'])
+            g_maps = str(row['google_maps'])
 
-                folium.CircleMarker(
-                    location=[row["latitud_validada"], row["longitud_validada"]],
-                    radius=5,
-                    popup=folium.Popup(popup_html, max_width=250),
-                    tooltip=f"Suministro: {row[col_suministro]}",
-                    color=color,
-                    fill=True,
-                    fill_opacity=0.75
-                ).add_to(mapa)
+            popup_text = (
+                f"<b>Suministro:</b> {sum_str}<br>"
+                f"<b>Estado:</b> {est_str}<br>"
+                f"<b>Dispersión:</b> {disp_str} m<br>"
+                f"<a href='{g_maps}' target='_blank'>Ver en Google Maps</a>"
+            )
 
-            st_folium(mapa, width="100%", height=600, returned_objects=[])
-        else:
-            st.warning("⚠️ No existen coordenadas válidas procesadas para mapear en esta ruta.")
+            folium.CircleMarker(
+                location=[row["latitud_validada"], row["longitud_validada"]],
+                radius=5,
+                popup=folium.Popup(popup_text, max_width=300),
+                tooltip=sum_str,
+                color=color,
+                fill=True,
+                fill_opacity=0.8
+            ).add_to(mapa)
 
-    with tab_datos:
-        st.dataframe(df_final, use_container_width=True)
+        st_folium(mapa, width=None, height=700, returned_objects=[])
+    else:
+        st.warning("No hay coordenadas válidas para mostrar en el mapa.")
+
+    st.dataframe(df_final, use_container_width=True)
