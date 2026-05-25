@@ -325,14 +325,19 @@ if st.session_state["logueado"]:
             df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
 
             mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=13, tiles=None)
-
+            plugins.Fullscreen(
+    position="topleft",           # Ubicación del botón (arriba a la izquierda)
+    title="Ver en pantalla completa", 
+    title_cancel="Salir de pantalla completa",
+    force_separate_button=Trueew
+).add_to(mapa)
             folium.TileLayer("OpenStreetMap", name="Mapa Base").add_to(mapa)
             folium.TileLayer(
                 tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
                 attr="Google Earth",
                 name="Vista Satélite"
             ).add_to(mapa)
-
+    
             cluster = MarkerCluster(
                 name="Agrupaciones de Suministros",
                 disableClusteringAtZoom=12,
@@ -363,7 +368,7 @@ if st.session_state["logueado"]:
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     icon=folium.DivIcon(
                         icon_size=(80, 25),
-                        icon_anchor=(50, -18),
+                        icon_anchor=(50, -13),
                         html=f"""
                         <div style="
                            width: 100%; 
