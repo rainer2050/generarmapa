@@ -127,7 +127,7 @@ if st.session_state["logueado"]:
                     if rol.get("nombre") == "Lecturista":
                         lecturistas.append({
                             "nombre": u["NombreUsuario"],
-                            "id": str(u["IdUsuario"])
+                            "id": str(u["IdProveedorPersonal"])
                         })
                         break
 
