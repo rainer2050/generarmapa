@@ -118,16 +118,14 @@ if st.session_state["logueado"]:
 
             lecturistas = []
             for u in usuarios:
-                # Evitar quiebres si 'Roles' viene null / None en el JSON
                 if not u.get("Roles"):
                     continue
                 
-                # Buscar si el usuario cumple con el rol específico
                 for rol in u["Roles"]:
                     if rol.get("nombre") == "Lecturista":
                         lecturistas.append({
                             "nombre": u["NombreUsuario"],
-                            "id": str(u["IdProveedorPersonal"])
+                            "id": str(u["IdProveedorPersonal"])  # Guardamos el IdProveedorPersonal (Ej: 12325)
                         })
                         break
 
@@ -135,10 +133,10 @@ if st.session_state["logueado"]:
                 st.warning("⚠️ No se encontraron usuarios con el rol 'Lecturista' activos.")
                 st.stop()
 
-            # Estructurar listbox mapeando Nombre -> ID
+            # Estructurar listbox mapeando Nombre -> IdProveedorPersonal
             dict_lect = {x["nombre"]: x["id"] for x in lecturistas}
             nombre_lect = st.selectbox("Seleccione el Lecturista", sorted(dict_lect.keys()))
-            codigo = dict_lect[nombre_lect]
+            codigo = dict_lect[nombre_lect]  # 'codigo' almacena el IdProveedorPersonal seleccionado
 
         except Exception as e:
             st.error(f"Error cargando la lista de lecturistas: {e}")
@@ -171,13 +169,14 @@ if st.session_state["logueado"]:
         try:
             hoy = datetime.now().strftime("%Y-%m-%d")
 
-            # Construcción de URL para base del día según filtros
+            # Construcción de URL exacta para la base del día según la modalidad y tipo de mapa
             if modo == "POR RUTA":
                 if tipo_mapa == "PENDIENTES":
                     url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/0"
                 else:
                     url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/0"
             else:
+                # 🎯 MODIFICACIÓN DE LA URL DE LECTURISTA: Se añaden los 5 ceros exactos antes del IdProveedorPersonal
                 if tipo_mapa == "PENDIENTES":
                     url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/0"
                 else:
@@ -212,9 +211,11 @@ if st.session_state["logueado"]:
             total = len(periodos_seleccionados)
 
             for i, periodo in enumerate(periodos_seleccionados):
+                # Aplicamos la misma estructura de URL corregida para los meses históricos
                 if modo == "POR RUTA":
                     url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/{periodo}"
                 else:
+                    # 🎯 Históricos por Lecturista manteniendo la misma posición para el ID y agregando el periodo al final
                     url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/{periodo}"
 
                 rh = session.get(url_hist, headers=HEADERS, timeout=180)
@@ -345,7 +346,6 @@ if st.session_state["logueado"]:
                 elif row["estado_gps"] == "UNICO":
                     color_icono = "blue"
 
-                # Corrección del string HTML para evitar errores de saltos de línea crudos en JS
                 popup_html = (
                     f"<b>Suministro:</b> {row[col_suministro]}<br>"
                     f"<b>Estado:</b> {row['estado_gps']}<br>"
@@ -353,14 +353,12 @@ if st.session_state["logueado"]:
                     f"<a href='{row['google_maps']}' target='_blank'>🌍 Abrir en Google Maps</a>"
                 )
 
-                # Icono nativo estable sin librerías externas dependientes de CDN externos
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     popup=folium.Popup(popup_html, max_width=220),
                     icon=folium.Icon(color=color_icono, icon="info-sign")
                 ).add_to(cluster)
 
-                # Etiqueta de texto flotante limpia por encima del marcador
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     icon=folium.DivIcon(
