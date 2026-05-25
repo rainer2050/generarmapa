@@ -207,45 +207,49 @@ if st.session_state["logueado"]:
             st.error(f"Error lecturistas: {e}")
             st.stop()
 
-    # =====================================================
-    # PERIODOS
-    # =====================================================
+  # =====================================================
+# PERIODOS
+# =====================================================
 
-    actual = datetime.now()
+actual = datetime.now()
 
-    mes_1 = (
-        actual - relativedelta(months=1)
-    ).strftime("%Y%m")
+mes_1 = (
+    actual - relativedelta(months=1)
+).strftime("%Y%m")
 
-    mes_2 = (
-        actual - relativedelta(months=2)
-    ).strftime("%Y%m")
+mes_2 = (
+    actual - relativedelta(months=2)
+).strftime("%Y%m")
 
-    default_periodos = [
-        mes_1,
-        mes_2
-    ]
+default_periodos = list(dict.fromkeys([
+    "202409",
+    "202410",
+    "202508",
+    "202509",
+    mes_1,
+    mes_2
+]))
 
-    periodos = []
+periodos = []
 
-    anio = actual.year
-    mes = actual.month
+anio = actual.year
+mes = actual.month
 
-    while anio > 2024 or (anio == 2024 and mes >= 9):
+while anio > 2024 or (anio == 2024 and mes >= 9):
 
-        periodos.append(f"{anio}{mes:02d}")
+    periodos.append(f"{anio}{mes:02d}")
 
-        mes -= 1
+    mes -= 1
 
-        if mes == 0:
-            mes = 12
-            anio -= 1
+    if mes == 0:
+        mes = 12
+        anio -= 1
 
-    periodos_seleccionados = st.multiselect(
-        "Históricos",
-        periodos,
-        default=default_periodos
-    )
+periodos_seleccionados = st.multiselect(
+    "Históricos",
+    periodos,
+    default=default_periodos
+)
 
     # =====================================================
     # PROCESAR GIS
