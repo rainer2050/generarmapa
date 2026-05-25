@@ -354,14 +354,7 @@ if st.session_state["logueado"]:
                 elif row["estado_gps"] == "UNICO":
                     color_icono = "blue"
 
-                    plugins.Search(
-    layer=cluster,                      # Busca dentro del grupo de suministros
-    geom_type="Point",                  # Tipo de geometría
-    placeholder="Buscar suministro...",  # Texto de ayuda en la barra
-    collapsed=True,                     # Se oculta en un botón de lupa por defecto
-    search_label="popup"                # Busca coincidencias dentro del texto del popup
-).add_to(mapa)
-
+              
                 popup_html = (
                     f"<b>Suministro:</b> {row[col_suministro]}<br>"
                     f"<b>Estado:</b> {row['estado_gps']}<br>"
