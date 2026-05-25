@@ -298,13 +298,13 @@ if st.session_state.get("logueado"):
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            # --- CONSTRUCCIÓN DEL MAPA INTERACTIVO (LIMPIO Y SIN MINI PUNTOS) ---
+            # --- CONSTRUCCIÓN DEL MAPA INTERACTIVO (LIMPIO Y COMPLETO) ---
             st.subheader("🗺️ MAPA GIS")
             df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
 
             mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=15, tiles=None)
 
-            # Capas base
+            # Capas base alternables
             folium.TileLayer("OpenStreetMap", name="Normal").add_to(mapa)
             folium.TileLayer(
                 tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
@@ -312,7 +312,7 @@ if st.session_state.get("logueado"):
                 name="Satélite"
             ).add_to(mapa)
 
-            # Único grupo contenedor para evitar duplicaciones
+            # Cluster sin círculos pequeños de fondo redundantes
             cluster = MarkerCluster(
                 name="Suministros",
                 overlay=True,
@@ -343,23 +343,22 @@ if st.session_state.get("logueado"):
                     f"</div>"
                 )
 
-                # 1. Pintar el Marcador tipo Gota (Localización clásica)
+                # 1. MARCADOR DE GEOLOCALIZACIÓN NATIVO (Gota clásica garantizada sin errores de carga externa)
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     popup=folium.Popup(popup_content, max_width=250),
                     icon=folium.Icon(
                         color=color_icono,
-                        icon="location-dot",
-                        prefix="fa"
+                        icon="info-sign"  # Icono nativo preinstalado
                     )
                 ).add_to(cluster)
 
-                # 2. Pintar la etiqueta del Suministro centrada exactamente ABAJO
+                # 2. CAJA BLANCA DEL SUMINISTRO UBICADA EXACTAMENTE DEBAJO DEL MARCADOR
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     icon=folium.DivIcon(
                         icon_size=(100, 20),
-                        icon_anchor=(50, -22),  # Centrado en X (-50) y posicionado justo abajo en Y (-22)
+                        icon_anchor=(50, -22),  # Centrado en X, posicionado justo abajo en Y
                         html=f"""
                         <div style="
                             font-size: 9px;
@@ -368,12 +367,12 @@ if st.session_state.get("logueado"):
                             text-align: center;
                             white-space: nowrap;
                             background-color: rgba(255, 255, 255, 0.9);
-                            padding: 1px 3px;
-                            border: 1px solid #ccc;
+                            padding: 2px 4px;
+                            border: 1px solid #999;
                             border-radius: 3px;
                             width: fit-content;
                             margin: 0 auto;
-                            box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+                            box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
                         ">
                             {row[col_suministro]}
                         </div>
