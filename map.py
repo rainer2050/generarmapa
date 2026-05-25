@@ -287,4 +287,127 @@ if st.session_state.get("logueado"):
                     lat_final = puntos[idx][0]
                     lon_final = puntos[idx][1]
 
-                resultados.
+                resultados.append({
+                    col_suministro: suministro,
+                    "latitud_validada": lat_final,
+                    "longitud_validada": lon_final,
+                    "estado_gps": estado,
+                    "dispersion_m": round(dispersion, 2),
+                    "meses_historicos": meses,
+                    "google_maps": f"https://www.google.com/maps?q={lat_final},{lon_final}"
+                })
+                progress_gis.progress((i + 1) / total_grupos)
+
+            progress_gis.empty()
+
+            df_gps = pd.DataFrame(resultados)
+            df_final = df_actual.merge(df_gps, on=col_suministro, how="left")
+
+            # Preparar buffer Excel en memoria
+            salida = f"GIS_{ruta}.xlsx"
+            output_excel = BytesIO()
+            with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
+                df_final.to_excel(writer, index=False, sheet_name="GIS")
+            excel_bytes = output_excel.getvalue()
+
+            st.success("✅ Procesamiento espacial completado.")
+
+            st.download_button(
+                "📥 DESCARGAR EXCEL FINAL",
+                excel_bytes,
+                file_name=salida,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            # =================================================
+            # MAPA DE GEOLOCALIZACIÓN REPARADO
+            # =================================================
+            st.subheader("🗺️ MAPA CORREGIDO DE GEOLOCALIZACIÓN")
+            df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
+
+            if len(df_mapa) > 0:
+                mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=16, tiles=None)
+
+                # Capas Base
+                folium.TileLayer("OpenStreetMap", name="Mapa Normal").add_to(mapa)
+                folium.TileLayer(
+                    tiles="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+                    attr="OpenTopoMap",
+                    name="Mapa Topográfico"
+                ).add_to(mapa)
+                folium.TileLayer(
+                    tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+                    attr="Google",
+                    name="Vista Satélite",
+                    overlay=False,
+                    control=True
+                ).add_to(mapa)
+
+                cluster = MarkerCluster(
+                    name="Suministros Distribuidos",
+                    overlay=True,
+                    control=False,
+                    disableClusteringAtZoom=17 
+                ).add_to(mapa)
+
+                for _, row in df_mapa.iterrows():
+                    color = "green"
+                    if row["estado_gps"] == "REBOTADO":
+                        color = "red"
+                    elif row["estado_gps"] == "UNICO":
+                        color = "blue"
+
+                    sum_str = str(row[col_suministro])
+                    est_str = str(row["estado_gps"])
+                    disp_str = str(row["dispersion_m"])
+                    g_maps_url = str(row["google_maps"])
+
+                    popup_html = (
+                        f"<b>Suministro:</b> {sum_str}<br>"
+                        f"<b>Estado:</b> {est_str}<br>"
+                        f"<b>Dispersión:</b> {disp_str} m<br>"
+                        f"<a href='{g_maps_url}' target='_blank'>🌍 Abrir en Google Maps</a>"
+                    )
+
+                    # 1. ICONO PIN DE LOCALIZACIÓN
+                    folium.Marker(
+                        location=[row["latitud_validada"], row["longitud_validada"]],
+                        popup=folium.Popup(popup_html, max_width=300),
+                        tooltip=f"Suministro: {sum_str}",
+                        icon=folium.Icon(color=color, icon="map-marker", prefix="fa")
+                    ).add_to(cluster)
+
+                    # 2. TEXTO INFERIOR EXACTAMENTE DEBAJO DEL PIN
+                    folium.Marker(
+                        location=[row["latitud_validada"], row["longitud_validada"]],
+                        icon=folium.DivIcon(
+                            icon_size=(150, 36),
+                            icon_anchor=(75, -14),
+                            html=f"""
+                            <div style="
+                                font-size: 9px;
+                                color: black;
+                                font-weight: bold;
+                                background-color: rgba(255, 255, 255, 0.85);
+                                padding: 1px 4px;
+                                border-radius: 3px;
+                                border: 1px solid #555555;
+                                text-align: center;
+                                width: fit-content;
+                                margin: 0 auto;
+                                box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+                            ">
+                                {sum_str}
+                            </div>
+                            """
+                        )
+                    ).add_to(cluster)
+
+                folium.LayerControl().add_to(mapa)
+                mapa_html = mapa._repr_html_()
+                components.html(mapa_html, height=800, scrolling=True)
+            else:
+                st.warning("⚠️ No se procesaron coordenadas utilizables para el mapa interactivo.")
+
+        except Exception as e:
+            st.error(f"Fallo crítico en procesamiento: {str(e)}")
