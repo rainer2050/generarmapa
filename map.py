@@ -3,9 +3,12 @@ import requests
 import pandas as pd
 import numpy as np
 import re
+import folium
 
 from bs4 import BeautifulSoup
 from io import BytesIO
+
+from streamlit_folium import st_folium
 
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
@@ -13,7 +16,7 @@ from dateutil.relativedelta import relativedelta
 from math import radians, sin, cos, sqrt, atan2
 
 # =========================================================
-# STREAMLIT
+# CONFIG STREAMLIT
 # =========================================================
 
 st.set_page_config(
@@ -22,7 +25,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-st.title("🛰️ SIGOF GIS RUTAS")
+st.title("🛰️ SIGOF GIS INTELIGENTE")
 
 # =========================================================
 # CONFIG
@@ -110,6 +113,7 @@ if st.button("🔐 INICIAR SESIÓN"):
         }
 
         if csrf:
+
             credentials["_csrf_token"] = csrf["value"]
 
         r = session.post(
@@ -165,7 +169,7 @@ if st.session_state.get("logueado"):
     # =====================================================
 
     tipo_mapa = st.radio(
-        "Tipo de mapa",
+        "Tipo procesamiento",
         [
             "TOTAL RUTA",
             "SOLO PENDIENTES"
@@ -241,7 +245,7 @@ if st.session_state.get("logueado"):
             if not ruta:
 
                 st.warning(
-                    "⚠️ Ingrese ruta"
+                    "⚠️ Ingrese una ruta"
                 )
 
                 st.stop()
@@ -263,12 +267,12 @@ if st.session_state.get("logueado"):
             )
 
             # =================================================
-            # URL BASE
+            # URL BASE ACTUAL
             # =================================================
 
             if tipo_mapa == "SOLO PENDIENTES":
 
-                url_base = (
+                url_actual = (
                     f"http://sigof.distriluz.com.pe/"
                     f"plus/Reportes/"
                     f"ajax_ordenes_historico_xls/"
@@ -279,7 +283,7 @@ if st.session_state.get("logueado"):
 
             else:
 
-                url_base = (
+                url_actual = (
                     f"http://sigof.distriluz.com.pe/"
                     f"plus/Reportes/"
                     f"ajax_ordenes_historico_xls/"
@@ -292,10 +296,10 @@ if st.session_state.get("logueado"):
                 "📥 Descargando base actual..."
             )
 
-            st.code(url_base)
+            st.code(url_actual)
 
             r = session.get(
-                url_base,
+                url_actual,
                 headers=HEADERS,
                 timeout=180
             )
@@ -306,18 +310,18 @@ if st.session_state.get("logueado"):
             ):
 
                 st.error(
-                    "❌ Error descargando base"
+                    "❌ Error descargando base actual"
                 )
 
                 st.stop()
 
-            df_base = pd.read_excel(
+            df_actual = pd.read_excel(
                 BytesIO(r.content)
             )
 
             st.success(
-                f"✅ Registros base: "
-                f"{len(df_base):,}"
+                f"✅ Registros actuales: "
+                f"{len(df_actual):,}"
             )
 
             # =================================================
@@ -326,7 +330,7 @@ if st.session_state.get("logueado"):
 
             col_suministro = None
 
-            for c in df_base.columns:
+            for c in df_actual.columns:
 
                 if "suministro" in str(c).lower():
 
@@ -341,9 +345,15 @@ if st.session_state.get("logueado"):
 
                 st.stop()
 
-            suministros = df_base[
-                col_suministro
-            ].astype(str).unique()
+            df_actual[col_suministro] = (
+                df_actual[col_suministro]
+                .astype(str)
+            )
+
+            suministros_actuales = (
+                df_actual[col_suministro]
+                .unique()
+            )
 
             # =================================================
             # HISTÓRICOS
@@ -389,11 +399,16 @@ if st.session_state.get("logueado"):
                         BytesIO(rh.content)
                     )
 
+                    df_temp[col_suministro] = (
+                        df_temp[col_suministro]
+                        .astype(str)
+                    )
+
                     df_temp = df_temp[
                         df_temp[
                             col_suministro
-                        ].astype(str).isin(
-                            suministros
+                        ].isin(
+                            suministros_actuales
                         )
                     ]
 
@@ -430,7 +445,7 @@ if st.session_state.get("logueado"):
             )
 
             # =================================================
-            # DETECTAR GPS
+            # GPS
             # =================================================
 
             lat_col = None
@@ -441,9 +456,11 @@ if st.session_state.get("logueado"):
                 cl = str(c).lower()
 
                 if "lat" in cl:
+
                     lat_col = c
 
                 if "lon" in cl:
+
                     lon_col = c
 
             if not lat_col or not lon_col:
@@ -478,14 +495,6 @@ if st.session_state.get("logueado"):
                 subset=[lat_col, lon_col]
             )
 
-            if fusionado.empty:
-
-                st.error(
-                    "❌ No existen coordenadas válidas"
-                )
-
-                st.stop()
-
             # =================================================
             # CENTRO GEOGRÁFICO
             # =================================================
@@ -508,104 +517,130 @@ if st.session_state.get("logueado"):
 
             resultados = []
 
-            grupos = fusionado.groupby(
-                col_suministro
+            total_actuales = len(
+                df_actual
             )
-
-            total_grupos = len(grupos)
 
             progress_gis = st.progress(0)
 
-            for i, (
-                suministro,
-                grupo
-            ) in enumerate(grupos):
+            for i, row_actual in enumerate(
+                df_actual.itertuples(index=False)
+            ):
 
-                puntos = grupo[
-                    [lat_col, lon_col]
-                ].values
-
-                meses = len(
-                    grupo[
-                        "periodo_historico"
-                    ].unique()
+                suministro = str(
+                    getattr(
+                        row_actual,
+                        col_suministro
+                    )
                 )
 
-                if len(puntos) == 1:
+                grupo = fusionado[
+                    fusionado[
+                        col_suministro
+                    ] == suministro
+                ]
 
-                    lat_final = puntos[0][0]
-                    lon_final = puntos[0][1]
+                # =============================================
+                # NUEVO
+                # =============================================
+
+                if grupo.empty:
+
+                    lat_final = np.nan
+                    lon_final = np.nan
+
+                    estado = "SIN_GPS"
 
                     dispersion = 0
-
-                    estado = "UNICO"
+                    meses = 0
 
                 else:
 
-                    n = len(puntos)
+                    puntos = grupo[
+                        [lat_col, lon_col]
+                    ].values
 
-                    matriz = np.zeros(
-                        (n, n)
+                    meses = len(
+                        grupo[
+                            "periodo_historico"
+                        ].unique()
                     )
 
-                    for x in range(n):
+                    if len(puntos) == 1:
 
-                        for y in range(
-                            x + 1,
-                            n
-                        ):
+                        lat_final = puntos[0][0]
+                        lon_final = puntos[0][1]
 
-                            d = haversine(
-                                puntos[x][0],
-                                puntos[x][1],
-                                puntos[y][0],
-                                puntos[y][1]
-                            )
+                        dispersion = 0
 
-                            matriz[x, y] = d
-                            matriz[y, x] = d
-
-                    dispersion = matriz.max()
-
-                    if dispersion > 500:
-
-                        distancias = []
-
-                        for pt in puntos:
-
-                            distancias.append(
-                                haversine(
-                                    pt[0],
-                                    pt[1],
-                                    centro_lat,
-                                    centro_lon
-                                )
-                            )
-
-                        idx = int(
-                            np.argmin(
-                                distancias
-                            )
-                        )
-
-                        estado = "REBOTADO"
+                        estado = "UNICO"
 
                     else:
 
-                        suma = matriz.sum(
-                            axis=1
+                        n = len(puntos)
+
+                        matriz = np.zeros(
+                            (n, n)
                         )
 
-                        idx = int(
-                            np.argmin(
-                                suma
+                        for x in range(n):
+
+                            for y in range(
+                                x + 1,
+                                n
+                            ):
+
+                                d = haversine(
+                                    puntos[x][0],
+                                    puntos[x][1],
+                                    puntos[y][0],
+                                    puntos[y][1]
+                                )
+
+                                matriz[x, y] = d
+                                matriz[y, x] = d
+
+                        dispersion = matriz.max()
+
+                        if dispersion > 500:
+
+                            distancias = []
+
+                            for pt in puntos:
+
+                                distancias.append(
+                                    haversine(
+                                        pt[0],
+                                        pt[1],
+                                        centro_lat,
+                                        centro_lon
+                                    )
+                                )
+
+                            idx = int(
+                                np.argmin(
+                                    distancias
+                                )
                             )
-                        )
 
-                        estado = "VALIDADO"
+                            estado = "REBOTADO"
 
-                    lat_final = puntos[idx][0]
-                    lon_final = puntos[idx][1]
+                        else:
+
+                            suma = matriz.sum(
+                                axis=1
+                            )
+
+                            idx = int(
+                                np.argmin(
+                                    suma
+                                )
+                            )
+
+                            estado = "VALIDADO"
+
+                        lat_final = puntos[idx][0]
+                        lon_final = puntos[idx][1]
 
                 resultados.append({
 
@@ -635,11 +670,14 @@ if st.session_state.get("logueado"):
                         "https://www.google.com/maps?q="
                         f"{lat_final},{lon_final}"
                     )
+                    if pd.notna(lat_final)
+                    else ""
+
                 })
 
                 progress_gis.progress(
                     (i + 1)
-                    / total_grupos
+                    / total_actuales
                 )
 
             # =================================================
@@ -650,25 +688,17 @@ if st.session_state.get("logueado"):
                 resultados
             )
 
-            df_final = df_base.merge(
+            df_final = df_actual.merge(
                 df_gps,
                 on=col_suministro,
                 how="left"
             )
 
             # =================================================
-            # EXPORTAR
+            # EXPORTAR EXCEL
             # =================================================
 
-            nombre_tipo = (
-                "PENDIENTES"
-                if tipo_mapa == "SOLO PENDIENTES"
-                else "TOTAL"
-            )
-
-            salida = (
-                f"GIS_{nombre_tipo}_{ruta}.xlsx"
-            )
+            salida = f"GIS_{ruta}.xlsx"
 
             with pd.ExcelWriter(
                 salida,
@@ -681,9 +711,43 @@ if st.session_state.get("logueado"):
                     sheet_name="GIS"
                 )
 
+                workbook = writer.book
+                worksheet = writer.sheets["GIS"]
+
+                hyperlink_format = workbook.add_format({
+                    "font_color": "blue",
+                    "underline": 1
+                })
+
+                col_maps = (
+                    df_final.columns
+                    .get_loc("google_maps")
+                )
+
+                for idx, url in enumerate(
+                    df_final["google_maps"],
+                    start=1
+                ):
+
+                    if str(url).startswith(
+                        "https://"
+                    ):
+
+                        worksheet.write_url(
+                            idx,
+                            col_maps,
+                            url,
+                            hyperlink_format,
+                            string="VER MAPA"
+                        )
+
             st.success(
-                "✅ Excel GIS generado correctamente"
+                "✅ Excel GIS generado"
             )
+
+            # =================================================
+            # DESCARGAR
+            # =================================================
 
             with open(
                 salida,
@@ -698,6 +762,108 @@ if st.session_state.get("logueado"):
                         "application/vnd.openxmlformats-"
                         "officedocument.spreadsheetml.sheet"
                     )
+                )
+
+            # =================================================
+            # MAPA
+            # =================================================
+
+            st.subheader("🗺️ MAPA GIS")
+
+            df_mapa = df_final.dropna(
+                subset=[
+                    "latitud_validada",
+                    "longitud_validada"
+                ]
+            ).copy()
+
+            if len(df_mapa) > 0:
+
+                centro_lat = df_mapa[
+                    "latitud_validada"
+                ].median()
+
+                centro_lon = df_mapa[
+                    "longitud_validada"
+                ].median()
+
+                mapa = folium.Map(
+                    location=[
+                        centro_lat,
+                        centro_lon
+                    ],
+                    zoom_start=15
+                )
+
+                for _, row in df_mapa.iterrows():
+
+                    estado = str(
+                        row["estado_gps"]
+                    )
+
+                    if estado == "VALIDADO":
+
+                        color = "green"
+
+                    elif estado == "REBOTADO":
+
+                        color = "red"
+
+                    elif estado == "UNICO":
+
+                        color = "orange"
+
+                    elif estado == "NUEVO":
+
+                        color = "blue"
+
+                    else:
+
+                        color = "gray"
+
+                    popup = f"""
+                    <b>Suministro:</b> {row[col_suministro]}<br>
+                    <b>Estado:</b> {estado}<br>
+                    <b>Dispersión:</b> {row['dispersion_m']} m<br>
+                    <b>Meses:</b> {row['meses_historicos']}<br>
+                    """
+
+                    if row["google_maps"]:
+
+                        popup += (
+                            f"<a href='{row['google_maps']}' "
+                            f"target='_blank'>Abrir Google Maps</a>"
+                        )
+
+                    folium.CircleMarker(
+
+                        location=[
+                            row["latitud_validada"],
+                            row["longitud_validada"]
+                        ],
+
+                        radius=5,
+
+                        popup=popup,
+
+                        color=color,
+
+                        fill=True,
+
+                        fill_opacity=0.8
+
+                    ).add_to(mapa)
+
+                st_folium(
+                    mapa,
+                    width=None,
+                    height=700
+                )
+
+            else:
+
+                st.warning(
+                    "⚠️ No existen coordenadas válidas"
                 )
 
         except Exception as e:
