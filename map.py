@@ -1,15 +1,11 @@
-# =========================================================
-# IMPORTS
-# =========================================================
-
 import streamlit as st
 import requests
 import pandas as pd
 import numpy as np
 import folium
-import re
+import streamlit.components.v1 as components
 
-from streamlit_folium import st_folium
+from folium.plugins import MarkerCluster
 
 from bs4 import BeautifulSoup
 from io import BytesIO
@@ -20,20 +16,13 @@ from dateutil.relativedelta import relativedelta
 from math import radians, sin, cos, sqrt, atan2
 
 # =========================================================
-# CONFIG STREAMLIT
+# CONFIG
 # =========================================================
 
 st.set_page_config(
     page_title="SIGOF GIS",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    layout="wide"
 )
-
-st.title("🛰️ SIGOF GIS SATELITAL")
-
-# =========================================================
-# CONFIG
-# =========================================================
 
 LOGIN_URL = "http://sigof.distriluz.com.pe/plus/usuario/login"
 
@@ -41,6 +30,8 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Referer": LOGIN_URL,
 }
+
+st.title("🛰️ SIGOF GIS")
 
 # =========================================================
 # FUNCIONES
@@ -80,6 +71,10 @@ password = st.text_input(
     "Contraseña",
     type="password"
 )
+
+# =========================================================
+# LOGIN BUTTON
+# =========================================================
 
 if st.button("INICIAR SESIÓN"):
 
@@ -126,43 +121,43 @@ if st.button("INICIAR SESIÓN"):
 
             st.stop()
 
+        st.success(
+            "✅ Sesión iniciada"
+        )
+
         st.session_state["session"] = session
         st.session_state["logueado"] = True
-
-        st.success(
-            "✅ Sesión iniciada correctamente"
-        )
 
     except Exception as e:
 
         st.error(str(e))
 
 # =========================================================
-# APP
+# DESPUÉS LOGIN
 # =========================================================
 
 if st.session_state.get("logueado"):
 
-    st.subheader("⚙️ CONFIGURACIÓN")
+    st.subheader("⚙️ Configuración")
 
     # =====================================================
     # RUTA
     # =====================================================
 
     ruta = st.text_input(
-        "Ingrese ruta",
+        "Ruta",
         placeholder="Ejemplo: 46516"
     )
 
     # =====================================================
-    # TIPO MAPA
+    # TIPO
     # =====================================================
 
     tipo_mapa = st.radio(
         "Tipo de mapa",
         [
-            "SOLO PENDIENTES",
-            "TODA LA RUTA"
+            "TOTAL RUTA",
+            "SOLO PENDIENTES"
         ]
     )
 
@@ -225,18 +220,10 @@ if st.session_state.get("logueado"):
     )
 
     # =====================================================
-    # BOTÓN
-    # =====================================================
-
-    procesar = st.button(
-        "🛰️ PROCESAR GIS"
-    )
-
-    # =====================================================
     # PROCESAR
     # =====================================================
 
-    if procesar:
+    if st.button("🛰️ PROCESAR"):
 
         try:
 
@@ -254,28 +241,30 @@ if st.session_state.get("logueado"):
 
             if tipo_mapa == "SOLO PENDIENTES":
 
-                url_base = (
+                url_actual = (
                     f"http://sigof.distriluz.com.pe/"
                     f"plus/Reportes/"
                     f"ajax_ordenes_historico_xls/"
                     f"U/{hoy}/{hoy}/0/0/0/"
-                    f"{ruta}/0/0/0/0/"
-                    f"LSC/0/9/0"
+                    f"{ruta}/0/0/0/0/LSC/0/9/0"
                 )
 
             else:
 
-                url_base = (
+                url_actual = (
                     f"http://sigof.distriluz.com.pe/"
                     f"plus/Reportes/"
                     f"ajax_ordenes_historico_xls/"
                     f"U/{hoy}/{hoy}/0/0/0/"
-                    f"{ruta}/0/0/0/0/"
-                    f"0/0/9/0"
+                    f"{ruta}/0/0/0/0/0/0/9/0"
                 )
 
+            # =================================================
+            # DESCARGAR BASE ACTUAL
+            # =================================================
+
             r = session.get(
-                url_base,
+                url_actual,
                 headers=HEADERS,
                 timeout=180
             )
@@ -286,27 +275,27 @@ if st.session_state.get("logueado"):
             ):
 
                 st.error(
-                    "❌ Error descargando"
+                    "❌ Error descargando datos"
                 )
 
                 st.stop()
 
-            df_base = pd.read_excel(
+            df_actual = pd.read_excel(
                 BytesIO(r.content)
             )
 
             st.success(
-                f"✅ Registros base: "
-                f"{len(df_base):,}"
+                f"✅ Registros actuales: "
+                f"{len(df_actual):,}"
             )
 
             # =================================================
-            # DETECTAR SUMINISTRO
+            # SUMINISTRO
             # =================================================
 
             col_suministro = None
 
-            for c in df_base.columns:
+            for c in df_actual.columns:
 
                 if "suministro" in str(c).lower():
 
@@ -316,12 +305,12 @@ if st.session_state.get("logueado"):
             if not col_suministro:
 
                 st.error(
-                    "❌ No existe suministro"
+                    "❌ No existe columna suministro"
                 )
 
                 st.stop()
 
-            suministros = df_base[
+            suministros_actuales = df_actual[
                 col_suministro
             ].astype(str).unique()
 
@@ -346,8 +335,7 @@ if st.session_state.get("logueado"):
                     f"plus/Reportes/"
                     f"ajax_ordenes_historico_xls/"
                     f"U/{hoy}/{hoy}/0/0/0/"
-                    f"{ruta}/0/0/0/0/"
-                    f"0/0/9/{periodo}"
+                    f"{ruta}/0/0/0/0/0/0/9/{periodo}"
                 )
 
                 rh = session.get(
@@ -369,7 +357,7 @@ if st.session_state.get("logueado"):
                         df_temp[
                             col_suministro
                         ].astype(str).isin(
-                            suministros
+                            suministros_actuales
                         )
                     ]
 
@@ -383,12 +371,10 @@ if st.session_state.get("logueado"):
                     (i + 1) / total
                 )
 
-            progress.empty()
-
             if not dfs_hist:
 
                 st.error(
-                    "❌ Sin históricos"
+                    "❌ No existen históricos"
                 )
 
                 st.stop()
@@ -403,7 +389,7 @@ if st.session_state.get("logueado"):
             )
 
             # =================================================
-            # COLUMNAS GPS
+            # DETECTAR LAT/LON
             # =================================================
 
             lat_col = None
@@ -418,14 +404,6 @@ if st.session_state.get("logueado"):
 
                 if "lon" in cl:
                     lon_col = c
-
-            if not lat_col or not lon_col:
-
-                st.error(
-                    "❌ Sin columnas GPS"
-                )
-
-                st.stop()
 
             fusionado[lat_col] = pd.to_numeric(
                 fusionado[lat_col],
@@ -448,7 +426,7 @@ if st.session_state.get("logueado"):
             ]
 
             # =================================================
-            # CENTRO
+            # CENTRO GEOGRÁFICO
             # =================================================
 
             centro_lat = fusionado[
@@ -460,7 +438,7 @@ if st.session_state.get("logueado"):
             ].median()
 
             # =================================================
-            # GIS
+            # PROCESAR GPS
             # =================================================
 
             resultados = []
@@ -493,9 +471,9 @@ if st.session_state.get("logueado"):
                     lat_final = puntos[0][0]
                     lon_final = puntos[0][1]
 
-                    estado_gps = "UNICO"
-
                     dispersion = 0
+
+                    estado = "UNICO"
 
                 else:
 
@@ -545,7 +523,7 @@ if st.session_state.get("logueado"):
                             )
                         )
 
-                        estado_gps = "REBOTADO"
+                        estado = "REBOTADO"
 
                     else:
 
@@ -559,7 +537,7 @@ if st.session_state.get("logueado"):
                             )
                         )
 
-                        estado_gps = "VALIDADO"
+                        estado = "VALIDADO"
 
                     lat_final = puntos[idx][0]
                     lon_final = puntos[idx][1]
@@ -576,7 +554,7 @@ if st.session_state.get("logueado"):
                     lon_final,
 
                     "estado_gps":
-                    estado_gps,
+                    estado,
 
                     "dispersion_m":
                     round(
@@ -599,8 +577,6 @@ if st.session_state.get("logueado"):
                     / total_grupos
                 )
 
-            progress_gis.empty()
-
             # =================================================
             # RESULTADO FINAL
             # =================================================
@@ -609,7 +585,7 @@ if st.session_state.get("logueado"):
                 resultados
             )
 
-            df_final = df_base.merge(
+            df_final = df_actual.merge(
                 df_gps,
                 on=col_suministro,
                 how="left"
@@ -634,252 +610,193 @@ if st.session_state.get("logueado"):
                     sheet_name="GIS"
                 )
 
-            st.session_state[
-                "df_final"
-            ] = df_final
-
-            st.session_state[
-                "salida"
-            ] = salida
-
-            st.session_state[
-                "col_suministro"
-            ] = col_suministro
-
             st.success(
-                "✅ GIS generado correctamente"
+                "✅ Excel generado"
+            )
+
+            with open(
+                salida,
+                "rb"
+            ) as f:
+
+                st.download_button(
+                    "📥 DESCARGAR EXCEL FINAL",
+                    f,
+                    file_name=salida,
+                    mime=(
+                        "application/vnd.openxmlformats-"
+                        "officedocument.spreadsheetml.sheet"
+                    )
+                )
+
+            # =================================================
+            # MAPA
+            # =================================================
+
+            st.subheader(
+                "🗺️ MAPA GIS"
+            )
+
+            df_mapa = df_final.dropna(
+                subset=[
+                    "latitud_validada",
+                    "longitud_validada"
+                ]
+            )
+
+            mapa = folium.Map(
+
+                location=[
+                    centro_lat,
+                    centro_lon
+                ],
+
+                zoom_start=15,
+
+                tiles=None
+            )
+
+            # =================================================
+            # CAPAS
+            # =================================================
+
+            folium.TileLayer(
+                "OpenStreetMap",
+                name="Normal"
+            ).add_to(mapa)
+
+            folium.TileLayer(
+
+                tiles="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
+
+                attr="OpenTopoMap",
+
+                name="Topográfico"
+
+            ).add_to(mapa)
+
+            folium.TileLayer(
+
+                tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+
+                attr="Google",
+
+                name="Satélite",
+
+                overlay=False,
+
+                control=True
+
+            ).add_to(mapa)
+
+            # =================================================
+            # CLUSTER
+            # =================================================
+
+            cluster = MarkerCluster(
+
+                name="Suministros",
+
+                overlay=True,
+
+                control=False,
+
+                disableClusteringAtZoom=18
+
+            ).add_to(mapa)
+
+            # =================================================
+            # PUNTOS
+            # =================================================
+
+            for _, row in df_mapa.iterrows():
+
+                color = "green"
+
+                if row["estado_gps"] == "REBOTADO":
+                    color = "red"
+
+                elif row["estado_gps"] == "UNICO":
+                    color = "blue"
+
+                popup = (
+                    f"<b>Suministro:</b> "
+                    f"{row[col_suministro]}<br>"
+                    f"<b>Estado:</b> "
+                    f"{row['estado_gps']}<br>"
+                    f"<b>Dispersión:</b> "
+                    f"{row['dispersion_m']} m"
+                )
+
+                folium.CircleMarker(
+
+                    location=[
+                        row["latitud_validada"],
+                        row["longitud_validada"]
+                    ],
+
+                    radius=6,
+
+                    popup=popup,
+
+                    color=color,
+
+                    fill=True,
+
+                    weight=2,
+
+                    fill_opacity=0.9
+
+                ).add_to(cluster)
+
+                # =============================================
+                # TEXTO LATERAL
+                # =============================================
+
+                folium.Marker(
+
+                    location=[
+                        row["latitud_validada"],
+                        row["longitud_validada"]
+                    ],
+
+                    icon=folium.DivIcon(
+
+                        icon_size=(150,36),
+
+                        icon_anchor=(-10,0),
+
+                        html=f"""
+                        <div style="
+                            font-size:8px;
+                            color:black;
+                            font-weight:bold;
+                            white-space: nowrap;
+                            margin-left:12px;
+                            margin-top:-2px;
+                        ">
+                            {row[col_suministro]}
+                        </div>
+                        """
+
+                    )
+
+                ).add_to(cluster)
+
+            # =================================================
+            # CONTROL
+            # =================================================
+
+            folium.LayerControl().add_to(mapa)
+
+            mapa_html = mapa._repr_html_()
+
+            components.html(
+                mapa_html,
+                height=800,
+                scrolling=True
             )
 
         except Exception as e:
 
             st.error(str(e))
-
-# =========================================================
-# MOSTRAR RESULTADOS
-# =========================================================
-
-if "df_final" in st.session_state:
-
-    df_final = st.session_state[
-        "df_final"
-    ]
-
-    salida = st.session_state[
-        "salida"
-    ]
-
-    col_suministro = st.session_state[
-        "col_suministro"
-    ]
-
-    # =====================================================
-    # DESCARGA
-    # =====================================================
-
-    with open(
-        salida,
-        "rb"
-    ) as f:
-
-        st.download_button(
-            "📥 DESCARGAR EXCEL FINAL",
-            f,
-            file_name=salida,
-            mime=(
-                "application/vnd.openxmlformats-"
-                "officedocument.spreadsheetml.sheet"
-            )
-        )
-
-    # =====================================================
-    # MAPA
-    # =====================================================
-
-    st.subheader("🗺️ MAPA GIS SATELITAL")
-
-    df_mapa = df_final.dropna(
-        subset=[
-            "latitud_validada",
-            "longitud_validada"
-        ]
-    )
-
-    if len(df_mapa) > 0:
-
-        centro_lat = df_mapa[
-            "latitud_validada"
-        ].median()
-
-        centro_lon = df_mapa[
-            "longitud_validada"
-        ].median()
-
-        # =================================================
-        # MAPA BASE
-        # =================================================
-
-        mapa = folium.Map(
-
-            location=[
-                centro_lat,
-                centro_lon
-            ],
-
-            zoom_start=18,
-
-            tiles=None
-        )
-
-        # =================================================
-        # SATELITAL
-        # =================================================
-
-        folium.TileLayer(
-
-            tiles=
-            "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-
-            attr="Google",
-
-            name="Google Satélite",
-
-            overlay=False,
-
-            control=True
-
-        ).add_to(mapa)
-
-        # =================================================
-        # NORMAL
-        # =================================================
-
-        folium.TileLayer(
-
-            tiles=
-            "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-
-            attr="Google",
-
-            name="Google Maps",
-
-            overlay=False,
-
-            control=True
-
-        ).add_to(mapa)
-
-        # =================================================
-        # HIBRIDO
-        # =================================================
-
-        folium.TileLayer(
-
-            tiles=
-            "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-
-            attr="Google",
-
-            name="Google Híbrido",
-
-            overlay=False,
-
-            control=True
-
-        ).add_to(mapa)
-
-        folium.LayerControl().add_to(mapa)
-
-        # =================================================
-        # PUNTOS
-        # =================================================
-
-        for _, row in df_mapa.iterrows():
-
-            color = "green"
-
-            if row["estado_gps"] == "REBOTADO":
-                color = "red"
-
-            elif row["estado_gps"] == "UNICO":
-                color = "blue"
-
-            popup = (
-                f"<b>Suministro:</b> "
-                f"{row[col_suministro]}<br>"
-                f"<b>Estado:</b> "
-                f"{row['estado_gps']}<br>"
-                f"<b>Dispersión:</b> "
-                f"{row['dispersion_m']} m"
-            )
-
-            # =================================================
-            # CIRCULO
-            # =================================================
-
-            folium.CircleMarker(
-
-                location=[
-                    row["latitud_validada"],
-                    row["longitud_validada"]
-                ],
-
-                radius=5,
-
-                popup=popup,
-
-                color=color,
-
-                fill=True,
-
-                fill_opacity=0.8
-
-            ).add_to(mapa)
-
-            # =================================================
-            # TEXTO LATERAL
-            # =================================================
-
-            folium.Marker(
-
-                location=[
-                    row["latitud_validada"],
-                    row["longitud_validada"]
-                ],
-
-                icon=folium.DivIcon(
-                    icon_size=(150,36),
-                    icon_anchor=(-10,0),
-
-                    html=f"""
-                    <div style="
-                        font-size:8px;
-                        color:black;
-                        font-weight:bold;
-                        white-space: nowrap;
-                        margin-left:12px;
-                        margin-top:-2px;
-                    ">
-                        {row[col_suministro]}
-                    </div>
-                    """
-                )
-
-            ).add_to(mapa)
-
-        st_folium(
-            mapa,
-            width=None,
-            height=750,
-            returned_objects=[]
-        )
-
-    # =====================================================
-    # TABLA
-    # =====================================================
-
-    st.subheader("📊 RESULTADOS")
-
-    st.dataframe(
-        df_final,
-        use_container_width=True
-    )
