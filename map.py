@@ -20,7 +20,7 @@ from dateutil.relativedelta import relativedelta
 from math import radians, sin, cos, sqrt, atan2
 
 # =========================================================
-# STREAMLIT CONFIG
+# CONFIG STREAMLIT
 # =========================================================
 
 st.set_page_config(
@@ -29,7 +29,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-st.title("🛰️ SIGOF GIS INTELIGENTE")
+st.title("🛰️ SIGOF GIS SATELITAL")
 
 # =========================================================
 # CONFIG
@@ -695,7 +695,7 @@ if "df_final" in st.session_state:
     # MAPA
     # =====================================================
 
-    st.subheader("🗺️ MAPA GIS")
+    st.subheader("🗺️ MAPA GIS SATELITAL")
 
     df_mapa = df_final.dropna(
         subset=[
@@ -714,13 +714,84 @@ if "df_final" in st.session_state:
             "longitud_validada"
         ].median()
 
+        # =================================================
+        # MAPA BASE
+        # =================================================
+
         mapa = folium.Map(
+
             location=[
                 centro_lat,
                 centro_lon
             ],
-            zoom_start=15
+
+            zoom_start=18,
+
+            tiles=None
         )
+
+        # =================================================
+        # SATELITAL
+        # =================================================
+
+        folium.TileLayer(
+
+            tiles=
+            "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+
+            attr="Google",
+
+            name="Google Satélite",
+
+            overlay=False,
+
+            control=True
+
+        ).add_to(mapa)
+
+        # =================================================
+        # NORMAL
+        # =================================================
+
+        folium.TileLayer(
+
+            tiles=
+            "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+
+            attr="Google",
+
+            name="Google Maps",
+
+            overlay=False,
+
+            control=True
+
+        ).add_to(mapa)
+
+        # =================================================
+        # HIBRIDO
+        # =================================================
+
+        folium.TileLayer(
+
+            tiles=
+            "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+
+            attr="Google",
+
+            name="Google Híbrido",
+
+            overlay=False,
+
+            control=True
+
+        ).add_to(mapa)
+
+        folium.LayerControl().add_to(mapa)
+
+        # =================================================
+        # PUNTOS
+        # =================================================
 
         for _, row in df_mapa.iterrows():
 
@@ -742,7 +813,7 @@ if "df_final" in st.session_state:
             )
 
             # =================================================
-            # PUNTO
+            # CIRCULO
             # =================================================
 
             folium.CircleMarker(
@@ -765,7 +836,7 @@ if "df_final" in st.session_state:
             ).add_to(mapa)
 
             # =================================================
-            # TEXTO SIEMPRE VISIBLE
+            # TEXTO LATERAL
             # =================================================
 
             folium.Marker(
@@ -775,22 +846,22 @@ if "df_final" in st.session_state:
                     row["longitud_validada"]
                 ],
 
-              icon=folium.DivIcon(
-        icon_size=(150,36),
-        icon_anchor=(-10,0),
+                icon=folium.DivIcon(
+                    icon_size=(150,36),
+                    icon_anchor=(-10,0),
 
-        html=f"""
-        <div style="
-            font-size:8px;
-            color:black;
-            font-weight:bold;
-            white-space: nowrap;
-            margin-left:5px;
-            margin-top:-4px;
-        ">
-            {row[col_suministro]}
-        </div>
-        """
+                    html=f"""
+                    <div style="
+                        font-size:8px;
+                        color:black;
+                        font-weight:bold;
+                        white-space: nowrap;
+                        margin-left:12px;
+                        margin-top:-2px;
+                    ">
+                        {row[col_suministro]}
+                    </div>
+                    """
                 )
 
             ).add_to(mapa)
@@ -798,7 +869,7 @@ if "df_final" in st.session_state:
         st_folium(
             mapa,
             width=None,
-            height=700,
+            height=750,
             returned_objects=[]
         )
 
