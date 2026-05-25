@@ -4,100 +4,412 @@ import pandas as pd
 import numpy as np
 import folium
 import streamlit.components.v1 as components
+
 from folium.plugins import MarkerCluster
 from bs4 import BeautifulSoup
 from io import BytesIO
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 from math import radians, sin, cos, sqrt, atan2
 
-# Configuración de página
-st.set_page_config(page_title="SIGOF GIS Avanzado", layout="wide")
+# =========================================================
+# CONFIGURACIÓN DE LA PÁGINA
+# =========================================================
+
+st.set_page_config(
+    page_title="SIGOF GIS Avanzado",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
 LOGIN_URL = "http://sigof.distriluz.com.pe/plus/usuario/login"
-HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": LOGIN_URL}
 
-# Función matemática de distancia
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Referer": LOGIN_URL,
+}
+
+st.title("🛰️ SIGOF GIS AVANZADO")
+
+# =========================================================
+# CONTROL DE SESIÓN
+# =========================================================
+
+if "logueado" not in st.session_state:
+    st.session_state["logueado"] = False
+
+# =========================================================
+# FUNCIONES MATEMÁTICAS
+# =========================================================
+
 def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000
-    dlat, dlon = radians(lat2 - lat1), radians(lon2 - lon1)
-    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
-    return 2 * R * atan2(sqrt(a), sqrt(1-a))
+    R = 6371000  # Radio de la Tierra en metros
 
-if "logueado" not in st.session_state: st.session_state["logueado"] = False
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
 
-# --- LOGIN ---
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(radians(lat1))
+        * cos(radians(lat2))
+        * sin(dlon / 2) ** 2
+    )
+
+    return 2 * R * atan2(sqrt(a), sqrt(1 - a))
+
+# =========================================================
+# MÓDULO DE LOGIN
+# =========================================================
+
 if not st.session_state["logueado"]:
     usuario = st.text_input("Usuario SIGOF")
     password = st.text_input("Contraseña", type="password")
+
     if st.button("INICIAR SESIÓN"):
-        session = requests.Session()
-        r = session.post(LOGIN_URL, data={"data[Usuario][usuario]": usuario, "data[Usuario][pass]": password}, headers=HEADERS)
-        if "Salir" in r.text:
-            st.session_state["session"], st.session_state["logueado"] = session, True
+        try:
+            session = requests.Session()
+            login_page = session.get(LOGIN_URL, headers=HEADERS, timeout=60)
+            soup = BeautifulSoup(login_page.text, "html.parser")
+
+            csrf = soup.find("input", {"name": "_csrf_token"})
+            credentials = {
+                "data[Usuario][usuario]": usuario,
+                "data[Usuario][pass]": password
+            }
+
+            if csrf:
+                credentials["_csrf_token"] = csrf["value"]
+
+            r = session.post(LOGIN_URL, data=credentials, headers=HEADERS, timeout=60)
+
+            if "Salir" not in r.text:
+                st.error("❌ Usuario o contraseña incorrectos")
+                st.stop()
+
+            st.success("✅ Sesión iniciada correctamente")
+            st.session_state["session"] = session
+            st.session_state["logueado"] = True
             st.rerun()
-        else: st.error("❌ Login fallido")
-    st.stop()
 
-# --- PROCESAMIENTO ---
-session = st.session_state["session"]
-modo = st.radio("Modo", ["POR RUTA", "POR LECTURISTA"])
-tipo = st.radio("Tipo", ["TOTAL", "PENDIENTES"])
+        except Exception as e:
+            st.error(f"Error en la conexión de login: {e}")
 
-codigo = st.text_input("Código ruta") if modo == "POR RUTA" else None
-if modo == "POR LECTURISTA":
-    u_json = session.get("http://sigof.distriluz.com.pe/plus/ValidaImei/listarusuario", headers=HEADERS).json()
-    lects = {u["NombreUsuario"]: str(u["IdProveedorPersonal"]) for u in u_json if u.get("Roles") and any(r.get("nombre")=="Lecturista" for r in u["Roles"])}
-    codigo = lects[st.selectbox("Seleccione Lecturista", sorted(lects.keys()))]
+# =========================================================
+# PANEL DE TRABAJO (POST-LOGIN)
+# =========================================================
 
-p_sel = st.multiselect("Periodos históricos", [f"{datetime.now().year}{m:02d}" for m in range(12, 0, -1)], default=[f"{datetime.now().year}01"])
+if st.session_state["logueado"]:
+    session = st.session_state["session"]
+    st.subheader("⚙️ CONFIGURACIÓN GIS")
 
-if st.button("🛰️ PROCESAR"):
-    hoy = datetime.now().strftime("%Y-%m-%d")
-    url_base = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/{'U' if modo=='POR RUTA' else 'U,L'}/{hoy}/{hoy}/0/0/0/{'0/0' if modo=='POR LECTURISTA' else ''}{codigo}/0/0/{'LSC' if tipo=='PENDIENTES' else '0'}/0/9/0"
-    
-    df_actual = pd.read_excel(BytesIO(session.get(url_base, headers=HEADERS).content))
-    col_sum = [c for c in df_actual.columns if "suministro" in str(c).lower()][0]
-    
-    # Detección columna J (índice 9) -> Limpieza "68724 - NOMBRE" -> "68724"
-    rutas = df_actual.iloc[:, 9].dropna().astype(str).apply(lambda x: x.split(' - ')[0].strip()).unique()
-    
-    dfs = []
-    for r in rutas:
-        for p in p_sel:
-            url_h = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{r}/0/0/0/0/0/0/9/{p}"
-            rh = session.get(url_h, headers=HEADERS)
-            if rh.status_code == 200 and rh.content[:2] == b"PK":
-                df_h = pd.read_excel(BytesIO(rh.content))
-                df_h = df_h[df_h[col_sum].astype(str).isin(df_actual[col_sum].astype(str))]
-                if not df_h.empty:
-                    df_h["periodo"] = p
-                    dfs.append(df_h)
-    
-    if not dfs: st.error("No hay datos históricos"); st.stop()
-    fusion = pd.concat(dfs, ignore_index=True)
-    lat_c = [c for c in fusion.columns if "lat" in str(c).lower()][0]
-    lon_c = [c for c in fusion.columns if "lon" in str(c).lower()][0]
-    
-    res = []
-    for s, g in fusion.groupby(col_sum):
-        pts = g[[lat_c, lon_c]].values
-        if len(pts) == 1:
-            res.append({col_sum: s, "lat": pts[0,0], "lon": pts[0,1], "est": "UNICO", "disp": 0})
-        else:
-            disp = max([haversine(pts[i,0], pts[i,1], pts[j,0], pts[j,1]) for i in range(len(pts)) for j in range(len(pts))])
-            idx = int(np.argmin([haversine(p[0], p[1], pts[:,0].mean(), pts[:,1].mean()) for p in pts]))
-            res.append({col_sum: s, "lat": pts[idx,0], "lon": pts[idx,1], "est": "REBOTADO" if disp > 500 else "VALIDADO", "disp": round(disp, 2)})
+    modo = st.radio("Modo trabajo", ["POR RUTA", "POR LECTURISTA"])
+    tipo_mapa = st.radio("Tipo", ["TOTAL", "PENDIENTES"])
+
+    if modo == "POR RUTA":
+        codigo = st.text_input("Código ruta", placeholder="Ejemplo: 46516")
+    else:
+        try:
+            url_lect = "http://sigof.distriluz.com.pe/plus/ValidaImei/listarusuario"
+            r_lect = session.get(url_lect, headers=HEADERS, timeout=120)
+            usuarios = r_lect.json()
+
+            lecturistas = []
+            for u in usuarios:
+                if not u.get("Roles"):
+                    continue
+                
+                for rol in u["Roles"]:
+                    if rol.get("nombre") == "Lecturista":
+                        lecturistas.append({
+                            "nombre": u["NombreUsuario"],
+                            "id": str(u["IdProveedorPersonal"])
+                        })
+                        break
+
+            if not lecturistas:
+                st.warning("⚠️ No se encontraron usuarios con el rol 'Lecturista' activos.")
+                st.stop()
+
+            dict_lect = {x["nombre"]: x["id"] for x in lecturistas}
+            nombre_lect = st.selectbox("Seleccione el Lecturista", sorted(dict_lect.keys()))
+            codigo = dict_lect[nombre_lect]
+
+        except Exception as e:
+            st.error(f"Error cargando la lista de lecturistas: {e}")
+            st.stop()
+
+    # Selección de periodos históricos
+    actual = datetime.now()
+    mes_1 = (actual - relativedelta(months=1)).strftime("%Y%m")
+    mes_2 = (actual - relativedelta(months=2)).strftime("%Y%m")
+
+    default_periodos = list(dict.fromkeys(["202409", "202410", "202508", "202509", mes_1, mes_2]))
+    periodos = []
+
+    anio = actual.year
+    mes = actual.month
+
+    while anio > 2024 or (anio == 2024 and mes >= 9):
+        periodos.append(f"{anio}{mes:02d}")
+        mes -= 1
+        if mes == 0:
+            mes = 12
+            anio -= 1
+
+    periodos_seleccionados = st.multiselect("Históricos a contrastar", periodos, default=default_periodos)
+
+    # =========================================================
+    # PROCESAMIENTO DE INFORMACIÓN Y MAPEO
+    # =========================================================
+    if st.button("🛰️ PROCESAR GIS"):
+        try:
+            hoy = datetime.now().strftime("%Y-%m-%d")
+
+            # 1. DESCARGA DEL DÍA ACTUAL
+            if modo == "POR RUTA":
+                if tipo_mapa == "PENDIENTES":
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/0"
+                else:
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/0"
+            else:
+                if tipo_mapa == "PENDIENTES":
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/0"
+                else:
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/0"
+
+            with st.spinner("📥 Descargando registros del día actual..."):
+                r = session.get(url_actual, headers=HEADERS, timeout=180)
+
+            if r.status_code != 200 or r.content[:2] != b"PK":
+                st.error("❌ El servidor SIGOF no devolvió una base válida para los parámetros ingresados.")
+                st.stop()
+
+            df_actual = pd.read_excel(BytesIO(r.content))
+            st.success(f"✅ Registros base encontrados en la descarga: {len(df_actual):,}")
+
+            # Detección de columnas críticas
+            col_suministro, col_ruta = None, None
+            for c in df_actual.columns:
+                cl = str(c).lower()
+                if "suministro" in cl: col_suministro = c
+                if "ruta" in cl or "nroruta" in cl: col_ruta = c
+
+            if not col_suministro:
+                st.error("❌ No se reconoció la columna que contiene los códigos de suministro.")
+                st.stop()
+
+            suministros = df_actual[col_suministro].astype(str).unique()
+
+            # 🎯 DETECCIÓN DE RUTAS DE TRABAJO
+            # Identificamos qué rutas están dentro de la descarga de hoy para buscar sus históricos
+            if modo == "POR RUTA":
+                rutas_a_buscar = [str(codigo)]
+            else:
+                if col_ruta and col_ruta in df_actual.columns:
+                    rutas_a_buscar = df_actual[col_ruta].dropna().astype(str).unique().tolist()
+                    st.info(f"🛣️ Rutas detectadas en la carga del lecturista: {', '.join(rutas_a_buscar)}")
+                else:
+                    st.warning("⚠️ No se encontró columna de Ruta en el archivo actual. Se intentará buscar histórico general.")
+                    rutas_a_buscar = []
+
+            # 2. DESCARGA ITERATIVA DE HISTÓRICOS POR RUTA
+            dfs_hist = []
             
-    df_final = df_actual.merge(pd.DataFrame(res), on=col_sum, how="left")
-    
-    # Descarga
-    output = BytesIO()
-    df_final.to_excel(output, index=False)
-    st.download_button("📥 DESCARGAR RESULTADOS EXCEL", output.getvalue(), "GIS_RESULTADO.xlsx")
-    
-    # Mapa
-    m = folium.Map(location=[fusion[lat_c].median(), fusion[lon_c].median()], zoom_start=15)
-    cluster = MarkerCluster().add_to(m)
-    for r in res:
-        folium.Marker([r["lat"], r["lon"]], popup=f"{r['est']} - {r['disp']}m", icon=folium.Icon(color="red" if r["est"]=="REBOTADO" else "blue" if r["est"]=="UNICO" else "green")).add_to(cluster)
-    components.html(m._repr_html_(), height=600)
-    st.success("Análisis completado")
+            if rutas_a_buscar:
+                total_descargas = len(rutas_a_buscar) * len(periodos_seleccionados)
+                contador = 0
+                progress = st.progress(0)
+                st.write("⏳ Descargando históricos de las rutas asociadas...")
+
+                for ruta in rutas_a_buscar:
+                    for periodo in periodos_seleccionados:
+                        # Buscamos por la ruta histórica (Filtro 'U' con el código de ruta en la posición correcta)
+                        url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/0/0/9/{periodo}"
+                        
+                        try:
+                            rh = session.get(url_hist, headers=HEADERS, timeout=120)
+                            if rh.status_code == 200 and rh.content[:2] == b"PK":
+                                df_temp = pd.read_excel(BytesIO(rh.content))
+                                # Filtrar de inmediato para conservar solo los suministros de hoy
+                                df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros)]
+                                
+                                if not df_temp.empty:
+                                    df_temp["periodo_historico"] = periodo
+                                    dfs_hist.append(df_temp)
+                        except Exception:
+                            pass # Ignorar caídas individuales de timeout por el servidor
+                        
+                        contador += 1
+                        progress.progress(min(contador / total_descargas, 1.0))
+            else:
+                # Fallback si no hay columna ruta detectada (Busca por lecturista directo)
+                progress = st.progress(0)
+                total = len(periodos_seleccionados)
+                for i, periodo in enumerate(periodos_seleccionados):
+                    url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/{periodo}"
+                    rh = session.get(url_hist, headers=HEADERS, timeout=120)
+                    if rh.status_code == 200 and rh.content[:2] == b"PK":
+                        df_temp = pd.read_excel(BytesIO(rh.content))
+                        df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros)]
+                        if not df_temp.empty:
+                            df_temp["periodo_historico"] = periodo
+                            dfs_hist.append(df_temp)
+                    progress.progress((i + 1) / total)
+
+            if not dfs_hist:
+                st.error("❌ No existen coordenadas históricas disponibles para las rutas en los periodos seleccionados.")
+                st.stop()
+
+            fusionado = pd.concat(dfs_hist, ignore_index=True)
+
+            # Identificar nombres de columnas de coordenadas en el histórico
+            lat_col, lon_col = None, None
+            for c in fusionado.columns:
+                cl = str(c).lower()
+                if "lat" in cl: lat_col = c
+                if "lon" in cl: lon_col = c
+
+            fusionado[lat_col] = pd.to_numeric(fusionado[lat_col], errors="coerce")
+            fusionado[lon_col] = pd.to_numeric(fusionado[lon_col], errors="coerce")
+            fusionado = fusionado[(fusionado[lat_col] != 0) & (fusionado[lon_col] != 0)]
+
+            centro_lat = fusionado[lat_col].median()
+            centro_lon = fusionado[lon_col].median()
+
+            # Algoritmo de Consistencia Espacial
+            resultados = []
+            grupos = fusionado.groupby(col_suministro)
+            total_grupos = len(grupos)
+            progress_gis = st.progress(0)
+
+            for i, (suministro, grupo) in enumerate(grupos):
+                puntos = grupo[[lat_col, lon_col]].values
+                meses = len(grupo["periodo_historico"].unique())
+
+                if len(puntos) == 1:
+                    lat_final, lon_final = puntos[0][0], puntos[0][1]
+                    estado = "UNICO"
+                    dispersion = 0
+                else:
+                    n = len(puntos)
+                    matriz = np.zeros((n, n))
+
+                    for x in range(n):
+                        for y in range(x + 1, n):
+                            d = haversine(puntos[x][0], puntos[x][1], puntos[y][0], puntos[y][1])
+                            matriz[x, y] = d
+                            matriz[y, x] = d
+
+                    dispersion = matriz.max()
+
+                    if dispersion > 500:
+                        distancias = [haversine(pt[0], pt[1], centro_lat, centro_lon) for pt in puntos]
+                        idx = int(np.argmin(distancias))
+                        estado = "REBOTADO"
+                    else:
+                        suma = matriz.sum(axis=1)
+                        idx = int(np.argmin(suma))
+                        estado = "VALIDADO"
+
+                    lat_final, lon_final = puntos[idx][0], puntos[idx][1]
+
+                resultados.append({
+                    col_suministro: suministro,
+                    "latitud_validada": lat_final,
+                    "longitud_validada": lon_final,
+                    "estado_gps": estado,
+                    "dispersion_m": round(dispersion, 2),
+                    "meses_historicos": meses,
+                    "google_maps": f"https://www.google.com/maps?q={lat_final},{lon_final}"
+                })
+
+                progress_gis.progress((i + 1) / total_grupos)
+
+            df_gps = pd.DataFrame(resultados)
+            df_final = df_actual.merge(df_gps, on=col_suministro, how="left")
+
+            # Estructurar archivo de salida para descarga excel
+            nombre_salida = f"GIS_LECTURISTA_{codigo}.xlsx" if modo == "POR LECTURISTA" else f"GIS_RUTA_{codigo}.xlsx"
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+                df_final.to_excel(writer, index=False, sheet_name="GIS")
+            excel_data = output.getvalue()
+
+            st.download_button(
+                "📥 DESCARGAR EXCEL GENERADO",
+                data=excel_data,
+                file_name=nombre_salida,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+            # =========================================================
+            # RENDERIZACIÓN MAPA INTERACTIVO FOLIUM
+            # =========================================================
+            st.subheader("🗺️ MAPA INTERACTIVO DE CONSISTENCIA")
+            df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
+
+            mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=15, tiles=None)
+
+            folium.TileLayer("OpenStreetMap", name="Mapa Base").add_to(mapa)
+            folium.TileLayer(
+                tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+                attr="Google Earth",
+                name="Vista Satélite"
+            ).add_to(mapa)
+
+            cluster = MarkerCluster(
+                name="Agrupaciones de Suministros",
+                disableClusteringAtZoom=18,
+                showCoverageOnHover=False
+            ).add_to(mapa)
+
+            for _, row in df_mapa.iterrows():
+                color_icono = "green"
+                if row["estado_gps"] == "REBOTADO":
+                    color_icono = "red"
+                elif row["estado_gps"] == "UNICO":
+                    color_icono = "blue"
+
+                popup_html = (
+                    f"<b>Suministro:</b> {row[col_suministro]}<br>"
+                    f"<b>Estado:</b> {row['estado_gps']}<br>"
+                    f"<b>Dispersión:</b> {row['dispersion_m']} m<br>"
+                    f"<a href='{row['google_maps']}' target='_blank'>🌍 Abrir en Google Maps</a>"
+                )
+
+                folium.Marker(
+                    location=[row["latitud_validada"], row["longitud_validada"]],
+                    popup=folium.Popup(popup_html, max_width=220),
+                    icon=folium.Icon(color=color_icono, icon="info-sign")
+                ).add_to(cluster)
+
+                folium.Marker(
+                    location=[row["latitud_validada"], row["longitud_validada"]],
+                    icon=folium.DivIcon(
+                        icon_size=(120, 20),
+                        icon_anchor=(60, -18),
+                        html=f"""
+                        <div style="
+                            font-size: 9px;
+                            font-weight: bold;
+                            color: black;
+                            background: rgba(255, 255, 255, 0.9);
+                            border-radius: 3px;
+                            padding: 1px 3px;
+                            border: 1px solid #777;
+                            text-align: center;
+                            white-space: nowrap;
+                            box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+                        ">
+                            {row[col_suministro]}
+                        </div>
+                        """
+                    )
+                ).add_to(cluster)
+
+            folium.LayerControl().add_to(mapa)
+            mapa_html = mapa._repr_html_()
+            components.html(mapa_html, height=850, scrolling=True)
+
+        except Exception as e:
+            st.error(f"Ocurrió un error general durante el proceso: {e}")
