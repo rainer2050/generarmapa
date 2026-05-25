@@ -406,7 +406,7 @@ if st.session_state["logueado"]:
 
             folium.LayerControl(position="topright", collapsed=True).add_to(mapa)
             mapa_html = mapa._repr_html_()
-            components.html(mapa_html, height=850, scrolling=True)
+            st.iframe(srcdoc=mapa_html, height=850, scrolling=True)
 
         except Exception as e:
             st.error(f"Ocurrió un error general durante el proceso: {e}")
