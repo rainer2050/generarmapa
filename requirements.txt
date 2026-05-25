@@ -1,8 +1,10 @@
-requests
+streamlit
 pandas
 numpy
+requests
+beautifulsoup4
 openpyxl
 xlsxwriter
-beautifulsoup4
 python-dateutil
-lxml
+folium
+streamlit-folium
