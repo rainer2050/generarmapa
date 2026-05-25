@@ -298,12 +298,13 @@ if st.session_state.get("logueado"):
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            # --- CONSTRUCCIÓN DEL MAPA INTERACTIVO ---
+            # --- CONSTRUCCIÓN DEL MAPA INTERACTIVO (LIMPIO Y SIN MINI PUNTOS) ---
             st.subheader("🗺️ MAPA GIS")
             df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
 
             mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=15, tiles=None)
 
+            # Capas base
             folium.TileLayer("OpenStreetMap", name="Normal").add_to(mapa)
             folium.TileLayer(
                 tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
@@ -311,7 +312,7 @@ if st.session_state.get("logueado"):
                 name="Satélite"
             ).add_to(mapa)
 
-            mini_cluster = folium.FeatureGroup(name="Mini puntos").add_to(mapa)
+            # Único grupo contenedor para evitar duplicaciones
             cluster = MarkerCluster(
                 name="Suministros",
                 overlay=True,
@@ -342,7 +343,7 @@ if st.session_state.get("logueado"):
                     f"</div>"
                 )
 
-                # Icono tipo Gota de localización clásico
+                # 1. Pintar el Marcador tipo Gota (Localización clásica)
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     popup=folium.Popup(popup_content, max_width=250),
@@ -353,22 +354,12 @@ if st.session_state.get("logueado"):
                     )
                 ).add_to(cluster)
 
-                folium.CircleMarker(
-                    location=[row["latitud_validada"], row["longitud_validada"]],
-                    radius=2,
-                    color=color_icono,
-                    fill=True,
-                    fill_color=color_icono,
-                    fill_opacity=1,
-                    weight=1
-                ).add_to(mini_cluster)
-
-                # CORRECCIÓN DE ANCLAJE: Coloca el texto exactamente DEBAJO del pin de localización
+                # 2. Pintar la etiqueta del Suministro centrada exactamente ABAJO
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     icon=folium.DivIcon(
                         icon_size=(100, 20),
-                        icon_anchor=(50, -22),  # Ajustado al eje exacto vertical para que quede abajo del pin
+                        icon_anchor=(50, -22),  # Centrado en X (-50) y posicionado justo abajo en Y (-22)
                         html=f"""
                         <div style="
                             font-size: 9px;
