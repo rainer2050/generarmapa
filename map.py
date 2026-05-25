@@ -324,7 +324,7 @@ if st.session_state["logueado"]:
             st.subheader("🗺️ MAPA INTERACTIVO DE CONSISTENCIA")
             df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
 
-            mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=20, tiles=None)
+            mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=13, tiles=None)
 
             folium.TileLayer("OpenStreetMap", name="Mapa Base").add_to(mapa)
             folium.TileLayer(
