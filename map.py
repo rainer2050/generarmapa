@@ -355,7 +355,7 @@ if st.session_state.get("logueado"):
             ):
 
                 st.info(
-                    f"📥 Descargando {periodo}"
+                 #   f"📥 Descargando {periodo}"
                 )
 
                 url_hist = (
