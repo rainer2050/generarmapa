@@ -754,20 +754,54 @@ if "df_final" in st.session_state:
                 f"{row['dispersion_m']} m"
             )
 
-            folium.CircleMarker(
-                location=[
-                    row["latitud_validada"],
-                    row["longitud_validada"]
-                ],
-                radius=5,
-                popup=popup,
-                tooltip=str(
-                  row[col_suministro]
-                ),
-                color=color,
-                fill=True,
-                fill_opacity=0.8
-            ).add_to(mapa)
+        # =====================================================
+# CÍRCULO
+# =====================================================
+
+folium.CircleMarker(
+
+    location=[
+        row["latitud_validada"],
+        row["longitud_validada"]
+    ],
+
+    radius=5,
+
+    popup=popup,
+
+    color=color,
+
+    fill=True,
+
+    fill_opacity=0.8
+
+).add_to(mapa)
+
+# =====================================================
+# TEXTO SIEMPRE VISIBLE
+# =====================================================
+
+folium.Marker(
+
+    location=[
+        row["latitud_validada"],
+        row["longitud_validada"]
+    ],
+
+    icon=folium.DivIcon(
+        html=f"""
+        <div style="
+            font-size:10px;
+            color:black;
+            font-weight:bold;
+            white-space: nowrap;
+        ">
+            {row[col_suministro]}
+        </div>
+        """
+    )
+
+).add_to(mapa)
 
         st_folium(
             mapa,
