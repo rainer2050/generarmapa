@@ -366,16 +366,21 @@ if st.session_state["logueado"]:
                         icon_anchor=(40, -18),
                         html=f"""
                         <div style="
-                            font-size: 16px;
-                            font-weight: bold;
-                            color: white;
-                            background: rgba(41, 128, 185, 0.95);
-                            border-radius: 2px;
-                            padding: 1px 3px;
-                            border: 1px solid #777;
-                            text-align: center;
-                            white-space: nowrap;
-                            box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+                           width: 100%; 
+            height: 100%; 
+            box-sizing: border-box; 
+            font-size: 14px; 
+            font-weight: bold; 
+            color: white; 
+            background: rgba(41, 128, 185, 0.95); 
+            border-radius: 4px; 
+            border: 1px solid #2c3e50; 
+            text-align: center; 
+            line-height: 23px; 
+            overflow: hidden; 
+            white-space: nowrap; 
+            text-overflow: ellipsis;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
                         ">
                             {row[col_suministro]}
                         </div>
