@@ -785,7 +785,7 @@ if "df_final" in st.session_state:
             color:black;
             font-weight:bold;
             white-space: nowrap;
-            margin-left:8px;
+            margin-left:5px;
             margin-top:-2px;
         ">
             {row[col_suministro]}
