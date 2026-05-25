@@ -13,7 +13,7 @@ from dateutil.relativedelta import relativedelta
 from math import radians, sin, cos, sqrt, atan2
 
 # =========================================================
-# CONFIGURACIÓN DE PÁGINA
+# CONFIG
 # =========================================================
 
 st.set_page_config(
@@ -32,11 +32,11 @@ HEADERS = {
 st.title("🛰️ SIGOF GIS")
 
 # =========================================================
-# FUNCIONES MATEMÁTICAS
+# FUNCIONES
 # =========================================================
 
 def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000  # Radio de la Tierra en metros
+    R = 6371000
     dlat = radians(lat2 - lat1)
     dlon = radians(lon2 - lon1)
     a = (
@@ -48,7 +48,7 @@ def haversine(lat1, lon1, lat2, lon2):
     return 2 * R * atan2(sqrt(a), sqrt(1 - a))
 
 # =========================================================
-# CONTROL DE ACCESO (LOGIN)
+# LOGIN
 # =========================================================
 
 usuario = st.text_input("Usuario SIGOF")
@@ -83,7 +83,7 @@ if st.button("INICIAR SESIÓN"):
         st.error(str(e))
 
 # =========================================================
-# INTERFAZ DE PROCESAMIENTO (POST-LOGIN)
+# DESPUÉS LOGIN
 # =========================================================
 
 if st.session_state.get("logueado"):
@@ -92,7 +92,6 @@ if st.session_state.get("logueado"):
     ruta = st.text_input("Ruta", placeholder="Ejemplo: 46516")
     tipo_mapa = st.radio("Tipo procesamiento", ["TOTAL RUTA", "SOLO PENDIENTES"])
 
-    # Cálculo dinámico de periodos históricos
     actual = datetime.now()
     mes_1 = (actual - relativedelta(months=1)).strftime("%Y%m")
     mes_2 = (actual - relativedelta(months=2)).strftime("%Y%m")
@@ -113,14 +112,13 @@ if st.session_state.get("logueado"):
     periodos_seleccionados = st.multiselect("Períodos históricos", periodos, default=default_periodos)
 
     # =====================================================
-    # NÚCLEO DEL PROCESAMIENTO GIS
+    # PROCESAR
     # =====================================================
     if st.button("🛰️ PROCESAR GIS"):
         try:
             session = st.session_state["session"]
             hoy = datetime.now().strftime("%Y-%m-%d")
 
-            # Construcción de URL según selección
             if tipo_mapa == "SOLO PENDIENTES":
                 url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/LSC/0/9/0"
             else:
@@ -130,13 +128,12 @@ if st.session_state.get("logueado"):
                 r = session.get(url_actual, headers=HEADERS, timeout=180)
 
             if r.status_code != 200 or r.content[:2] != b"PK":
-                st.error("❌ Error descargando información del servidor")
+                st.error("❌ Error descargando información")
                 st.stop()
 
             df_actual = pd.read_excel(BytesIO(r.content))
-            st.success(f"✅ Registros totales encontrados en la ruta: {len(df_actual):,}")
+            st.success(f"✅ Registros encontrados: {len(df_actual):,}")
 
-            # Identificación dinámica de la columna Suministro
             col_suministro = None
             for c in df_actual.columns:
                 if "suministro" in str(c).lower():
@@ -144,30 +141,12 @@ if st.session_state.get("logueado"):
                     break
 
             if not col_suministro:
-                st.error("❌ No existe la columna suministro en el archivo descargado")
+                st.error("❌ No existe columna suministro")
                 st.stop()
 
-            # --- FILTRO INTELIGENTE DE PENDIENTES ---
-            col_estado = None
-            for c in df_actual.columns:
-                if "estado" in str(c).lower() or "est_ord" in str(c).lower():
-                    col_estado = c
-                    break
+            suministros_actuales = df_actual[col_suministro].astype(str).unique()
 
-            if col_estado:
-                df_pendientes = df_actual[df_actual[col_estado].astype(str).str.upper().str.contains("PEND|ASIG|EJEC|LSC", na=True)]
-            else:
-                df_pendientes = df_actual
-
-            suministros_con_pendiente = df_pendientes[col_suministro].astype(str).unique()
-
-            if len(suministros_con_pendiente) == 0:
-                st.warning("🎉 ¡No hay suministros pendientes en esta ruta! No se requiere procesar históricos.")
-                st.stop()
-            else:
-                st.info(f"🔍 Suministros con pendientes detectados: {len(suministros_con_pendiente):,}. Saltando el resto para optimizar.")
-
-            # --- EXTRACCIÓN FILTRADA DE HISTÓRICOS ---
+            # Históricos
             dfs_hist = []
             total = len(periodos_seleccionados)
 
@@ -178,29 +157,27 @@ if st.session_state.get("logueado"):
                 url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/0/0/9/{periodo}"
                 rh = session.get(url_hist, headers=HEADERS, timeout=180)
 
-                if rh.status_code == 200 and rh.content[:2] != b"PK":
-                    continue
-
-                if rh.status_code == 200:
+                if rh.status_code == 200 and rh.content[:2] == b"PK":
                     df_temp = pd.read_excel(BytesIO(rh.content))
-                    df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros_con_pendiente)]
-                    if not df_temp.empty:
-                        df_temp["periodo_historico"] = periodo
-                        dfs_hist.append(df_temp)
+                    df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros_actuales)]
+                    df_temp["periodo_historico"] = periodo
+                    dfs_hist.append(df_temp)
 
                 porcentaje = int(((i + 1) / total) * 100)
                 progress_hist.progress(porcentaje / 100)
                 estado_hist.write(f"📥 Históricos {i+1}/{total} ({porcentaje}%)")
 
             if not dfs_hist:
-                st.error("❌ No existen coordenadas históricas registradas para los suministros pendientes.")
+                st.error("❌ No existen históricos")
                 st.stop()
 
             fusionado = pd.concat(dfs_hist, ignore_index=True)
-            estado_hist.write(f"✅ Históricos fusionados y filtrados con éxito: {len(fusionado):,}")
+            estado_hist.write(f"✅ Históricos fusionados: {len(fusionado):,}")
 
-            # Localizar columnas de coordenadas
-            lat_col, lon_col = None, None
+            # Detectar LAT/LON
+            lat_col = None
+            lon_col = None
+
             for c in fusionado.columns:
                 cl = str(c).lower()
                 if "lat" in cl: lat_col = c
@@ -208,16 +185,13 @@ if st.session_state.get("logueado"):
 
             fusionado[lat_col] = pd.to_numeric(fusionado[lat_col], errors="coerce")
             fusionado[lon_col] = pd.to_numeric(fusionado[lon_col], errors="coerce")
-            fusionado = fusionado[(fusionado[lat_col] != 0) & (fusionado[lon_col] != 0)]
 
-            if fusionado.empty:
-                st.error("❌ No hay coordenadas válidas (distintas de 0) en los históricos recopilados.")
-                st.stop()
+            fusionado = fusionado[(fusionado[lat_col] != 0) & (fusionado[lon_col] != 0)]
 
             centro_lat = fusionado[lat_col].median()
             centro_lon = fusionado[lon_col].median()
 
-            # --- ANÁLISIS GEOGRÁFICO DE CONVERGENCIA ---
+            # Análisis GIS
             resultados = []
             grupos = fusionado.groupby(col_suministro)
             total_grupos = len(grupos)
@@ -247,7 +221,9 @@ if st.session_state.get("logueado"):
                     dispersion = matriz.max()
 
                     if dispersion > 500:
-                        distancias = [haversine(pt[0], pt[1], centro_lat, centro_lon) for pt in puntos]
+                        distancias = []
+                        for pt in puntos:
+                            distancias.append(haversine(pt[0], pt[1], centro_lat, centro_lon))
                         idx = int(np.argmin(distancias))
                         estado = "REBOTADO"
                     else:
@@ -258,6 +234,7 @@ if st.session_state.get("logueado"):
                     lat_final = puntos[idx][0]
                     lon_final = puntos[idx][1]
 
+                # CORRECCIÓN AQUÍ: Cambiado el formato del link para evitar que rompa las celdas en Excel
                 resultados.append({
                     col_suministro: suministro,
                     "latitud_validada": float(lat_final),
@@ -277,12 +254,14 @@ if st.session_state.get("logueado"):
             df_gps = pd.DataFrame(resultados)
             df_final = df_actual.merge(df_gps, on=col_suministro, how="left")
 
-            # --- COMPILACIÓN EXCEL ---
+            # Exportar
             progress_excel = st.progress(0)
             estado_excel = st.empty()
             estado_excel.write("📎 Generando Excel...")
 
             salida = f"GIS_{ruta}.xlsx"
+            
+            # Ajuste de exportación usando un Buffer en memoria para evitar bloqueos de archivos en disco
             output = BytesIO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df_final.to_excel(writer, index=False, sheet_name="GIS")
@@ -298,13 +277,12 @@ if st.session_state.get("logueado"):
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            # --- CONSTRUCCIÓN DEL MAPA INTERACTIVO (LIMPIO Y COMPLETO) ---
+            # Mapa
             st.subheader("🗺️ MAPA GIS")
             df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
 
             mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=15, tiles=None)
 
-            # Capas base alternables
             folium.TileLayer("OpenStreetMap", name="Normal").add_to(mapa)
             folium.TileLayer(
                 tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
@@ -312,7 +290,7 @@ if st.session_state.get("logueado"):
                 name="Satélite"
             ).add_to(mapa)
 
-            # Cluster sin círculos pequeños de fondo redundantes
+            mini_cluster = folium.FeatureGroup(name="Mini puntos").add_to(mapa)
             cluster = MarkerCluster(
                 name="Suministros",
                 overlay=True,
@@ -324,55 +302,53 @@ if st.session_state.get("logueado"):
             ).add_to(mapa)
 
             for _, row in df_mapa.iterrows():
-                color_icono = "green"
+                color = "green"
                 if row["estado_gps"] == "REBOTADO":
-                    color_icono = "red"
+                    color = "red"
                 elif row["estado_gps"] == "UNICO":
-                    color_icono = "blue"
+                    color = "blue"
 
-                popup_content = (
-                    f"<div style='font-family: Arial, sans-serif; font-size: 12px; line-height: 1.5;'>"
+                popup = (
                     f"<b>Suministro:</b> {row[col_suministro]}<br>"
-                    f"<b>Estado:</b> <span style='color:{color_icono}; font-weight:bold;'>{row['estado_gps']}</span><br>"
+                    f"<b>Estado:</b> {row['estado_gps']}<br>"
                     f"<b>Dispersión:</b> {row['dispersion_m']} m<br>"
-                    f"<b>Historial:</b> {row['meses_historicos']} meses<br><br>"
-                    f"<a href='{row['google_maps']}' target='_blank' style='"
-                    f"display: inline-block; padding: 5px 10px; color: white; background-color: #4285F4; "
-                    f"text-decoration: none; border-radius: 4px; font-weight: bold; text-align: center; width: 85%;"
-                    f"'>🌍 Abrir Google Maps</a>"
-                    f"</div>"
+                    f"<a href='{row['google_maps']}' target='_blank'>🌍 Ver Mapa</a>"
                 )
 
-                # 1. MARCADOR DE GEOLOCALIZACIÓN NATIVO (Gota clásica garantizada sin errores de carga externa)
-                folium.Marker(
+                folium.CircleMarker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
-                    popup=folium.Popup(popup_content, max_width=250),
-                    icon=folium.Icon(
-                        color=color_icono,
-                        icon="info-sign"  # Icono nativo preinstalado
-                    )
+                    radius=7,
+                    popup=popup,
+                    color=color,
+                    fill=True,
+                    fill_color=color,
+                    fill_opacity=0.9,
+                    weight=2
                 ).add_to(cluster)
 
-                # 2. CAJA BLANCA DEL SUMINISTRO UBICADA EXACTAMENTE DEBAJO DEL MARCADOR
+                folium.CircleMarker(
+                    location=[row["latitud_validada"], row["longitud_validada"]],
+                    radius=2,
+                    color=color,
+                    fill=True,
+                    fill_color=color,
+                    fill_opacity=1,
+                    weight=1
+                ).add_to(mini_cluster)
+
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     icon=folium.DivIcon(
-                        icon_size=(100, 20),
-                        icon_anchor=(50, -22),  # Centrado en X, posicionado justo abajo en Y
+                        icon_size=(160, 36),
+                        icon_anchor=(80, -18),
                         html=f"""
                         <div style="
-                            font-size: 9px;
-                            color: black;
-                            font-weight: bold;
-                            text-align: center;
+                            font-size:8px;
+                            color:black;
+                            font-weight:bold;
+                            text-align:center;
                             white-space: nowrap;
-                            background-color: rgba(255, 255, 255, 0.9);
-                            padding: 2px 4px;
-                            border: 1px solid #999;
-                            border-radius: 3px;
-                            width: fit-content;
-                            margin: 0 auto;
-                            box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+                            margin-top:18px;
                         ">
                             {row[col_suministro]}
                         </div>
