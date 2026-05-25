@@ -363,7 +363,7 @@ if st.session_state["logueado"]:
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     icon=folium.DivIcon(
                         icon_size=(150, 30),
-                        icon_anchor=(60, -18),
+                        icon_anchor=(40, -18),
                         html=f"""
                         <div style="
                             font-size: 16px;
