@@ -761,6 +761,9 @@ if "df_final" in st.session_state:
                 ],
                 radius=5,
                 popup=popup,
+                tooltip=str(
+                  row[col_suministro]
+                ),
                 color=color,
                 fill=True,
                 fill_opacity=0.8
