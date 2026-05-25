@@ -366,7 +366,7 @@ if st.session_state["logueado"]:
                         icon_anchor=(60, -18),
                         html=f"""
                         <div style="
-                            font-size: 9px;
+                            font-size: 6px;
                             font-weight: bold;
                             color: black;
                             background: rgba(255, 255, 255, 0.9);
