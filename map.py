@@ -154,7 +154,6 @@ if st.session_state.get("logueado"):
                     col_estado = c
                     break
 
-            # Si se encuentra la columna de estado, filtramos solo los activos
             if col_estado:
                 df_pendientes = df_actual[df_actual[col_estado].astype(str).str.upper().str.contains("PEND|ASIG|EJEC|LSC", na=True)]
             else:
@@ -162,7 +161,6 @@ if st.session_state.get("logueado"):
 
             suministros_con_pendiente = df_pendientes[col_suministro].astype(str).unique()
 
-            # Validar si hay trabajo pendiente para continuar
             if len(suministros_con_pendiente) == 0:
                 st.warning("🎉 ¡No hay suministros pendientes en esta ruta! No se requiere procesar históricos.")
                 st.stop()
@@ -181,11 +179,10 @@ if st.session_state.get("logueado"):
                 rh = session.get(url_hist, headers=HEADERS, timeout=180)
 
                 if rh.status_code == 200 and rh.content[:2] != b"PK":
-                    continue  # Si no es un excel válido, saltar periodo
+                    continue
 
                 if rh.status_code == 200:
                     df_temp = pd.read_excel(BytesIO(rh.content))
-                    # Aplicación del filtro: ignorar si ya no tiene deuda/pendiente activo
                     df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros_con_pendiente)]
                     if not df_temp.empty:
                         df_temp["periodo_historico"] = periodo
@@ -307,7 +304,6 @@ if st.session_state.get("logueado"):
 
             mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=15, tiles=None)
 
-            # Capas base alternables
             folium.TileLayer("OpenStreetMap", name="Normal").add_to(mapa)
             folium.TileLayer(
                 tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
@@ -327,14 +323,12 @@ if st.session_state.get("logueado"):
             ).add_to(mapa)
 
             for _, row in df_mapa.iterrows():
-                # Asignación de colores según comportamiento GPS
                 color_icono = "green"
                 if row["estado_gps"] == "REBOTADO":
                     color_icono = "red"
                 elif row["estado_gps"] == "UNICO":
                     color_icono = "blue"
 
-                # Estructura del Popup HTML con el botón a Google Maps
                 popup_content = (
                     f"<div style='font-family: Arial, sans-serif; font-size: 12px; line-height: 1.5;'>"
                     f"<b>Suministro:</b> {row[col_suministro]}<br>"
@@ -348,7 +342,7 @@ if st.session_state.get("logueado"):
                     f"</div>"
                 )
 
-                # Icono de geolocalización clásico (Estilo Gota)
+                # Icono tipo Gota de localización clásico
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     popup=folium.Popup(popup_content, max_width=250),
@@ -359,7 +353,6 @@ if st.session_state.get("logueado"):
                     )
                 ).add_to(cluster)
 
-                # Punto base auxiliar para cuando se aleja el zoom
                 folium.CircleMarker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     radius=2,
@@ -370,12 +363,12 @@ if st.session_state.get("logueado"):
                     weight=1
                 ).add_to(mini_cluster)
 
-                # Etiqueta de texto flotante ajustada debajo del pin de gota
+                # CORRECCIÓN DE ANCLAJE: Coloca el texto exactamente DEBAJO del pin de localización
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     icon=folium.DivIcon(
                         icon_size=(100, 20),
-                        icon_anchor=(50, -28),  # Centrado en X, desplazado hacia abajo en Y
+                        icon_anchor=(50, -22),  # Ajustado al eje exacto vertical para que quede abajo del pin
                         html=f"""
                         <div style="
                             font-size: 9px;
@@ -383,12 +376,13 @@ if st.session_state.get("logueado"):
                             font-weight: bold;
                             text-align: center;
                             white-space: nowrap;
-                            background-color: rgba(255, 255, 255, 0.8);
+                            background-color: rgba(255, 255, 255, 0.9);
                             padding: 1px 3px;
                             border: 1px solid #ccc;
                             border-radius: 3px;
                             width: fit-content;
                             margin: 0 auto;
+                            box-shadow: 1px 1px 2px rgba(0,0,0,0.2);
                         ">
                             {row[col_suministro]}
                         </div>
