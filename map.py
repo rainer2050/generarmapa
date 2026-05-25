@@ -102,16 +102,13 @@ if st.session_state["logueado"]:
     session = st.session_state["session"]
     st.subheader("⚙️ CONFIGURACIÓN GIS")
 
-    # Selección de modalidad
     modo = st.radio("Modo trabajo", ["POR RUTA", "POR LECTURISTA"])
     tipo_mapa = st.radio("Tipo", ["TOTAL", "PENDIENTES"])
 
-    # Filtrado dinámico según la modalidad elegida
     if modo == "POR RUTA":
         codigo = st.text_input("Código ruta", placeholder="Ejemplo: 46516")
     else:
         try:
-            # Consumir endpoint original de listado de usuarios
             url_lect = "http://sigof.distriluz.com.pe/plus/ValidaImei/listarusuario"
             r_lect = session.get(url_lect, headers=HEADERS, timeout=120)
             usuarios = r_lect.json()
@@ -125,7 +122,7 @@ if st.session_state["logueado"]:
                     if rol.get("nombre") == "Lecturista":
                         lecturistas.append({
                             "nombre": u["NombreUsuario"],
-                            "id": str(u["IdProveedorPersonal"])  # Guardamos el IdProveedorPersonal (Ej: 12325)
+                            "id": str(u["IdProveedorPersonal"])
                         })
                         break
 
@@ -133,10 +130,9 @@ if st.session_state["logueado"]:
                 st.warning("⚠️ No se encontraron usuarios con el rol 'Lecturista' activos.")
                 st.stop()
 
-            # Estructurar listbox mapeando Nombre -> IdProveedorPersonal
             dict_lect = {x["nombre"]: x["id"] for x in lecturistas}
             nombre_lect = st.selectbox("Seleccione el Lecturista", sorted(dict_lect.keys()))
-            codigo = dict_lect[nombre_lect]  # 'codigo' almacena el IdProveedorPersonal seleccionado
+            codigo = dict_lect[nombre_lect]
 
         except Exception as e:
             st.error(f"Error cargando la lista de lecturistas: {e}")
@@ -169,14 +165,13 @@ if st.session_state["logueado"]:
         try:
             hoy = datetime.now().strftime("%Y-%m-%d")
 
-            # Construcción de URL exacta para la base del día según la modalidad y tipo de mapa
+            # 1. DESCARGA DEL DÍA ACTUAL
             if modo == "POR RUTA":
                 if tipo_mapa == "PENDIENTES":
                     url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/0"
                 else:
                     url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/0"
             else:
-                # 🎯 MODIFICACIÓN DE LA URL DE LECTURISTA: Se añaden los 5 ceros exactos antes del IdProveedorPersonal
                 if tipo_mapa == "PENDIENTES":
                     url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/0"
                 else:
@@ -192,12 +187,12 @@ if st.session_state["logueado"]:
             df_actual = pd.read_excel(BytesIO(r.content))
             st.success(f"✅ Registros base encontrados en la descarga: {len(df_actual):,}")
 
-            # Detección dinámica de columna Suministro
-            col_suministro = None
+            # Detección de columnas críticas
+            col_suministro, col_ruta = None, None
             for c in df_actual.columns:
-                if "suministro" in str(c).lower():
-                    col_suministro = c
-                    break
+                cl = str(c).lower()
+                if "suministro" in cl: col_suministro = c
+                if "ruta" in cl or "nroruta" in cl: col_ruta = c
 
             if not col_suministro:
                 st.error("❌ No se reconoció la columna que contiene los códigos de suministro.")
@@ -205,40 +200,69 @@ if st.session_state["logueado"]:
 
             suministros = df_actual[col_suministro].astype(str).unique()
 
-            # Descarga iterativa de históricos filtrada por Suministros
-            dfs_hist = []
-            progress = st.progress(0)
-            total = len(periodos_seleccionados)
-
-            for i, periodo in enumerate(periodos_seleccionados):
-                # Aplicamos la misma estructura de URL corregida para los meses históricos
-                if modo == "POR RUTA":
-                    url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/{periodo}"
+            # 🎯 DETECCIÓN DE RUTAS DE TRABAJO
+            # Identificamos qué rutas están dentro de la descarga de hoy para buscar sus históricos
+            if modo == "POR RUTA":
+                rutas_a_buscar = [str(codigo)]
+            else:
+                if col_ruta and col_ruta in df_actual.columns:
+                    rutas_a_buscar = df_actual[col_ruta].dropna().astype(str).unique().tolist()
+                    st.info(f"🛣️ Rutas detectadas en la carga del lecturista: {', '.join(rutas_a_buscar)}")
                 else:
-                    # 🎯 Históricos por Lecturista manteniendo la misma posición para el ID y agregando el periodo al final
+                    st.warning("⚠️ No se encontró columna de Ruta en el archivo actual. Se intentará buscar histórico general.")
+                    rutas_a_buscar = []
+
+            # 2. DESCARGA ITERATIVA DE HISTÓRICOS POR RUTA
+            dfs_hist = []
+            
+            if rutas_a_buscar:
+                total_descargas = len(rutas_a_buscar) * len(periodos_seleccionados)
+                contador = 0
+                progress = st.progress(0)
+                st.write("⏳ Descargando históricos de las rutas asociadas...")
+
+                for ruta in rutas_a_buscar:
+                    for periodo in periodos_seleccionados:
+                        # Buscamos por la ruta histórica (Filtro 'U' con el código de ruta en la posición correcta)
+                        url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/0/0/9/{periodo}"
+                        
+                        try:
+                            rh = session.get(url_hist, headers=HEADERS, timeout=120)
+                            if rh.status_code == 200 and rh.content[:2] == b"PK":
+                                df_temp = pd.read_excel(BytesIO(rh.content))
+                                # Filtrar de inmediato para conservar solo los suministros de hoy
+                                df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros)]
+                                
+                                if not df_temp.empty:
+                                    df_temp["periodo_historico"] = periodo
+                                    dfs_hist.append(df_temp)
+                        except Exception:
+                            pass # Ignorar caídas individuales de timeout por el servidor
+                        
+                        contador += 1
+                        progress.progress(min(contador / total_descargas, 1.0))
+            else:
+                # Fallback si no hay columna ruta detectada (Busca por lecturista directo)
+                progress = st.progress(0)
+                total = len(periodos_seleccionados)
+                for i, periodo in enumerate(periodos_seleccionados):
                     url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/{periodo}"
-
-                rh = session.get(url_hist, headers=HEADERS, timeout=180)
-
-                if rh.status_code != 200 or rh.content[:2] != b"PK":
-                    continue
-
-                df_temp = pd.read_excel(BytesIO(rh.content))
-                df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros)]
-
-                if not df_temp.empty:
-                    df_temp["periodo_historico"] = periodo
-                    dfs_hist.append(df_temp)
-
-                progress.progress(int(((i + 1) / total) * 100) / 100)
+                    rh = session.get(url_hist, headers=HEADERS, timeout=120)
+                    if rh.status_code == 200 and rh.content[:2] == b"PK":
+                        df_temp = pd.read_excel(BytesIO(rh.content))
+                        df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros)]
+                        if not df_temp.empty:
+                            df_temp["periodo_historico"] = periodo
+                            dfs_hist.append(df_temp)
+                    progress.progress((i + 1) / total)
 
             if not dfs_hist:
-                st.error("❌ No existen coordenadas históricas disponibles en los periodos seleccionados.")
+                st.error("❌ No existen coordenadas históricas disponibles para las rutas en los periodos seleccionados.")
                 st.stop()
 
             fusionado = pd.concat(dfs_hist, ignore_index=True)
 
-            # Identificar nombres de columnas de coordenadas
+            # Identificar nombres de columnas de coordenadas en el histórico
             lat_col, lon_col = None, None
             for c in fusionado.columns:
                 cl = str(c).lower()
@@ -299,7 +323,7 @@ if st.session_state["logueado"]:
                     "google_maps": f"https://www.google.com/maps?q={lat_final},{lon_final}"
                 })
 
-                progress_gis.progress(int(((i + 1) / total_grupos) * 100) / 100)
+                progress_gis.progress((i + 1) / total_grupos)
 
             df_gps = pd.DataFrame(resultados)
             df_final = df_actual.merge(df_gps, on=col_suministro, how="left")
