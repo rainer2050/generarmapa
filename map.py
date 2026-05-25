@@ -335,7 +335,7 @@ if st.session_state["logueado"]:
 
             cluster = MarkerCluster(
                 name="Agrupaciones de Suministros",
-                disableClusteringAtZoom=18,
+                disableClusteringAtZoom=12,
                 showCoverageOnHover=False
             ).add_to(mapa)
 
