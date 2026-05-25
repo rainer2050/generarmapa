@@ -307,7 +307,7 @@ if st.session_state["logueado"]:
 
             # Estructurar archivo de salida para descarga excel
             nombre_salida = f"GIS_LECTURISTA_{codigo}.xlsx" if modo == "POR LECTURISTA" else f"GIS_RUTA_{codigo}.xlsx"
-            output = BytesIO()
+            #output = BytesIO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df_final.to_excel(writer, index=False, sheet_name="GIS")
             excel_data = output.getvalue()
