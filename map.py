@@ -747,7 +747,7 @@ if "df_final" in st.session_state:
 
             popup = (
                 f"<b>Suministro:</b> "
-                f"{row.iloc[2]}<br>"
+                f"{row.iloc[0]}<br>"
                 f"<b>Estado:</b> "
                 f"{row['estado_gps']}<br>"
                 f"<b>Dispersión:</b> "
@@ -761,14 +761,10 @@ if "df_final" in st.session_state:
                 ],
                 radius=5,
                 popup=popup,
-                tooltip=str(
-                  row[col_suministro]
-                ),
                 color=color,
                 fill=True,
                 fill_opacity=0.8
             ).add_to(mapa)
-            
 
         st_folium(
             mapa,
