@@ -368,8 +368,8 @@ if st.session_state["logueado"]:
                         <div style="
                             font-size: 16px;
                             font-weight: bold;
-                            color: black;
-                            background: rgba(255, 255, 255, 0.9);
+                            color: white;
+                            background: rgba(41, 128, 185, 0.95);
                             border-radius: 2px;
                             padding: 1px 3px;
                             border: 1px solid #777;
