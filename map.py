@@ -59,7 +59,6 @@ def clean_coordinate(val, is_lat=True):
     if pd.isna(val):
         return 0.0
     
-    # Limpieza de strings básicos
     val_str = str(val).strip().replace(',', '.')
     match = re.search(r'[-+]?\d*\.\d+|\d+', val_str)
     
@@ -71,13 +70,12 @@ def clean_coordinate(val, is_lat=True):
         if num == 0.0:
             return 0.0
             
-        # AUTO-CORRECCIÓN: Si viene multiplicado o en formato plano entero (ej: -9931234 en vez de -9.931234)
+        # Corregir números enteros gigantes (sin punto decimal del SIGOF)
         if abs(num) > 180:
-            # Ir dividiendo entre 10 hasta caer en un rango decimal geográfico coherente
             while abs(num) > 180:
                 num /= 10.0
 
-        # AUTO-CORRECCIÓN DE SIGNO: En Perú, la latitud y la longitud son SIEMPRE negativas.
+        # Asegurar signo negativo de Perú (Latitud y Longitud siempre negativas)
         if is_lat and num > 0:
             num = -num
         elif not is_lat and num > 0:
@@ -145,7 +143,7 @@ if st.session_state.get("logueado"):
     with col_m:
         tipo_mapa = st.radio("Tipo de consulta base", ["TOTAL RUTA", "SOLO PENDIENTES"], horizontal=True)
 
-    # Configuración de períodos históricos
+    # Configuración dinámica de períodos históricos basados en la fecha actual
     actual = datetime.now()
     mes_1 = (actual - relativedelta(months=1)).strftime("%Y%m")
     mes_2 = (actual - relativedelta(months=2)).strftime("%Y%m")
@@ -189,7 +187,7 @@ if st.session_state.get("logueado"):
                 st.warning(f"⚠️ La ruta {ruta} tiene 0 registros en '{tipo_mapa}'.")
                 st.stop()
 
-            st.success(f"✅ Registros base obtenidos: {len(df_actual):,}")
+            st.success(f"✅ Registros base obtenidos de la ruta actual: {len(df_actual):,}")
 
             col_suministro = next((c for c in df_actual.columns if "suministro" in str(c).lower()), None)
             if not col_suministro:
@@ -198,53 +196,64 @@ if st.session_state.get("logueado"):
 
             suministros_actuales = df_actual[col_suministro].astype(str).unique()
 
+            # Encontrar columnas GPS dinámicamente en el archivo base
+            lat_col_base = next((c for c in df_actual.columns if "lat" in str(c).lower()), None)
+            lon_col_base = next((c for c in df_actual.columns if "lon" in str(c).lower()), None)
+
             # Descarga de Históricos
             dfs_hist = []
             total = len(periodos_seleccionados)
-            progress = st.progress(0)
-            estado_descarga = st.empty()
+            
+            if total > 0:
+                progress = st.progress(0)
+                estado_descarga = st.empty()
 
-            for i, periodo in enumerate(periodos_seleccionados):
-                estado_descarga.text(f"Descargando históricos: {i+1}/{total} ({periodo})")
-                url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/0/0/9/{periodo}"
-                
-                rh = session.get(url_hist, headers=HEADERS, timeout=180)
-                if rh.status_code == 200 and rh.content[:2] != b"PK":
-                    df_temp = pd.read_excel(BytesIO(rh.content))
-                    df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros_actuales)].copy()
-                    df_temp["periodo_historico"] = periodo
-                    dfs_hist.append(df_temp)
+                for i, periodo in enumerate(periodos_seleccionados):
+                    estado_descarga.text(f"Buscando históricos: {i+1}/{total} ({periodo})")
+                    url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/0/0/9/{periodo}"
+                    
+                    rh = session.get(url_hist, headers=HEADERS, timeout=180)
+                    if rh.status_code == 200 and rh.content[:2] == b"PK":
+                        df_temp = pd.read_excel(BytesIO(rh.content))
+                        df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros_actuales)].copy()
+                        if len(df_temp) > 0:
+                            df_temp["periodo_historico"] = periodo
+                            dfs_hist.append(df_temp)
 
-                progress.progress((i + 1) / total)
+                    progress.progress((i + 1) / total)
 
-            estado_descarga.empty()
-            progress.empty()
+                estado_descarga.empty()
+                progress.empty()
 
+            # --- ESTRATEGIA DE CONTINGENCIA INTELIGENTE ---
+            usando_historicos = True
             if not dfs_hist:
-                st.error("❌ No se encontraron datos históricos para estos suministros.")
-                st.stop()
+                st.info("ℹ️ No se encontraron datos históricos en los meses seleccionados. Usando coordenadas del mes actual de forma automática.")
+                usando_historicos = False
+                if not lat_col_base or not lon_col_base:
+                    st.error("❌ No se detectaron columnas de Latitud/Longitud en el archivo base. Imposible graficar.")
+                    st.stop()
+                
+                # Preparamos el dataframe base emulando el flujo estructurado
+                fusionado = df_actual.copy()
+                fusionado["periodo_historico"] = "ACTUAL"
+                lat_col, lon_col = lat_col_base, lon_col_base
+            else:
+                fusionado = pd.concat(dfs_hist, ignore_index=True)
+                lat_col = next((c for c in fusionado.columns if "lat" in str(c).lower()), None)
+                lon_col = next((c for c in fusionado.columns if "lon" in str(c).lower()), None)
 
-            fusionado = pd.concat(dfs_hist, ignore_index=True)
-
-            lat_col = next((c for c in fusionado.columns if "lat" in str(c).lower()), None)
-            lon_col = next((c for c in fusionado.columns if "lon" in str(c).lower()), None)
-
-            if not lat_col or not lon_col:
-                st.error("❌ No se detectaron las columnas de Latitud o Longitud en los históricos.")
-                st.stop()
-
-            # --- APLICACIÓN DE LIMPIEZA ADAPTATIVA ---
+            # Saneamiento riguroso de las coordenadas encontradas
             fusionado[lat_col] = fusionado[lat_col].apply(lambda x: clean_coordinate(x, is_lat=True))
             fusionado[lon_col] = fusionado[lon_col].apply(lambda x: clean_coordinate(x, is_lat=False))
             
-            # Filtramos únicamente ceros absolutos para dejar pasar cualquier coordenada real reparada
             fusionado = fusionado[(fusionado[lat_col] != 0.0) & (fusionado[lon_col] != 0.0)].dropna(subset=[lat_col, lon_col])
 
             if len(fusionado) == 0:
-                st.error("❌ Los archivos de la plataforma no contienen coordenadas válidas (están en blanco o en 0).")
+                st.error("❌ Los registros de esta ruta no cuentan con ninguna coordenada GPS válida cargada en el SIGOF.")
                 st.stop()
 
-            # Obtener centro real recalculado por mediana
+            # Calcular baricentro por medianas
             centro_lat = fusionado[lat_col].median()
             centro_lon = fusionado[lon_col].median()
 
@@ -262,7 +271,7 @@ if st.session_state.get("logueado"):
                     lat_final = puntos[0][0]
                     lon_final = puntos[0][1]
                     dispersion = 0.0
-                    estado = "UNICO"
+                    estado = "UNICO" if usando_historicos else "ACTUAL"
                 else:
                     n = len(puntos)
                     matriz = np.zeros((n, n))
@@ -300,16 +309,22 @@ if st.session_state.get("logueado"):
             progress_gis.empty()
 
             df_gps = pd.DataFrame(resultados)
-            df_final = df_actual.merge(df_gps, on=col_suministro, how="left")
+            
+            # Unir con el dataframe actual
+            if usando_historicos:
+                df_final = df_actual.merge(df_gps, on=col_suministro, how="left")
+            else:
+                # Si usamos el base, mapeamos directamente para evitar columnas duplicadas
+                df_final = df_actual.drop(columns=[lat_col_base, lon_col_base]).merge(df_gps, on=col_suministro, how="left")
 
-            # Preparar buffer Excel en memoria
+            # Guardado seguro en memoria
             salida = f"GIS_{ruta}.xlsx"
             output_excel = BytesIO()
             with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
                 df_final.to_excel(writer, index=False, sheet_name="GIS")
             excel_bytes = output_excel.getvalue()
 
-            st.success("✅ Procesamiento espacial completado.")
+            st.success("✅ Análisis espacial completado con éxito.")
 
             st.download_button(
                 "📥 DESCARGAR EXCEL FINAL",
@@ -353,7 +368,7 @@ if st.session_state.get("logueado"):
                     color = "green"
                     if row["estado_gps"] == "REBOTADO":
                         color = "red"
-                    elif row["estado_gps"] == "UNICO":
+                    elif row["estado_gps"] in ["UNICO", "ACTUAL"]:
                         color = "blue"
 
                     sum_str = str(row[col_suministro])
@@ -381,7 +396,7 @@ if st.session_state.get("logueado"):
                         location=[row["latitud_validada"], row["longitud_validada"]],
                         icon=folium.DivIcon(
                             icon_size=(150, 36),
-                            icon_anchor=(75, -14), # 75 centra en X, -14 desplaza hacia abajo fuera del marcador
+                            icon_anchor=(75, -14),
                             html=f"""
                             <div style="
                                 font-size: 9px;
@@ -406,7 +421,7 @@ if st.session_state.get("logueado"):
                 mapa_html = mapa._repr_html_()
                 components.html(mapa_html, height=800, scrolling=True)
             else:
-                st.warning("⚠️ No se procesaron coordenadas utilizables para el mapa interactivo.")
+                st.warning("⚠️ No se procesaron coordenadas utilizables para estructurar el mapa.")
 
         except Exception as e:
             st.error(f"Fallo crítico en procesamiento: {str(e)}")
