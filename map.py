@@ -362,7 +362,7 @@ if st.session_state["logueado"]:
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     icon=folium.DivIcon(
-                        icon_size=(100, 30),
+                        icon_size=(80, 25),
                         icon_anchor=(50, -18),
                         html=f"""
                         <div style="
