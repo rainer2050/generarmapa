@@ -234,7 +234,7 @@ if st.session_state.get("logueado"):
                     lat_final = puntos[idx][0]
                     lon_final = puntos[idx][1]
 
-                # CORRECCIÓN AQUÍ: Cambiado el formato del link para evitar que rompa las celdas en Excel
+                # Generamos una URL limpia para las propiedades del mapa
                 resultados.append({
                     col_suministro: suministro,
                     "latitud_validada": float(lat_final),
@@ -254,14 +254,13 @@ if st.session_state.get("logueado"):
             df_gps = pd.DataFrame(resultados)
             df_final = df_actual.merge(df_gps, on=col_suministro, how="left")
 
-            # Exportar
+            # Exportar Excel en memoria
             progress_excel = st.progress(0)
             estado_excel = st.empty()
             estado_excel.write("📎 Generando Excel...")
 
             salida = f"GIS_{ruta}.xlsx"
             
-            # Ajuste de exportación usando un Buffer en memoria para evitar bloqueos de archivos en disco
             output = BytesIO()
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df_final.to_excel(writer, index=False, sheet_name="GIS")
@@ -308,17 +307,24 @@ if st.session_state.get("logueado"):
                 elif row["estado_gps"] == "UNICO":
                     color = "blue"
 
-                popup = (
+                # POPUP MEJORADO: Agregado el botón directo a Google Maps
+                popup_content = (
+                    f"<div style='font-family: Arial, sans-serif; font-size: 12px; line-height: 1.5;'>"
                     f"<b>Suministro:</b> {row[col_suministro]}<br>"
-                    f"<b>Estado:</b> {row['estado_gps']}<br>"
+                    f"<b>Estado:</b> <span style='color:{color}; font-weight:bold;'>{row['estado_gps']}</span><br>"
                     f"<b>Dispersión:</b> {row['dispersion_m']} m<br>"
-                    f"<a href='{row['google_maps']}' target='_blank'>🌍 Ver Mapa</a>"
+                    f"<b>Historial:</b> {row['meses_historicos']} meses<br><br>"
+                    f"<a href='{row['google_maps']}' target='_blank' style='"
+                    f"display: inline-block; padding: 5px 10px; color: white; background-color: #4285F4; "
+                    f"text-decoration: none; border-radius: 4px; font-weight: bold; text-align: center; width: 85%;"
+                    f"'>🌍 Abrir Google Maps</a>"
+                    f"</div>"
                 )
 
                 folium.CircleMarker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     radius=7,
-                    popup=popup,
+                    popup=folium.Popup(popup_content, max_width=250),
                     color=color,
                     fill=True,
                     fill_color=color,
@@ -336,19 +342,25 @@ if st.session_state.get("logueado"):
                     weight=1
                 ).add_to(mini_cluster)
 
+                # ETIQUETA CENTRADA: Se modificó icon_anchor para que calce exacto al medio del punto
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
                     icon=folium.DivIcon(
-                        icon_size=(160, 36),
-                        icon_anchor=(80, -18),
+                        icon_size=(100, 20),
+                        icon_anchor=(50, -10),  # Anclado perfecto al centro horizontal
                         html=f"""
                         <div style="
-                            font-size:8px;
-                            color:black;
-                            font-weight:bold;
-                            text-align:center;
+                            font-size: 9px;
+                            color: black;
+                            font-weight: bold;
+                            text-align: center;
                             white-space: nowrap;
-                            margin-top:18px;
+                            background-color: rgba(255, 255, 255, 0.8);
+                            padding: 1px 3px;
+                            border: 1px solid #ccc;
+                            border-radius: 3px;
+                            width: fit-content;
+                            margin: 0 auto;
                         ">
                             {row[col_suministro]}
                         </div>
