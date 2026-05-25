@@ -369,7 +369,7 @@ if st.session_state["logueado"]:
                             font-size: 16px;
                             font-weight: bold;
                             color: white;
-                            background: rgba(41, 128, 185, 0.95);
+                            background: rgba(41, 128, 185, 0.5);
                             border-radius: 2px;
                             padding: 1px 3px;
                             border: 1px solid #777;
