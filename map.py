@@ -28,7 +28,7 @@ HEADERS = {
     "Referer": LOGIN_URL,
 }
 
-st.title("🛰️ SIGOF GIS INTELIGENTE")
+st.title("🛰️ SIGOF GIS - CORREGIDO")
 
 # Inicialización segura del estado de la sesión
 if "logueado" not in st.session_state:
@@ -50,6 +50,23 @@ def haversine(lat1, lon1, lat2, lon2):
         * sin(dlon / 2) ** 2
     )
     return 2 * R * atan2(sqrt(a), sqrt(1 - a))
+
+def clean_coordinate(val):
+    """
+    Sanea de forma estricta las coordenadas provenientes del SIGOF.
+    Convierte comas en puntos, elimina caracteres inválidos y asegura flotantes puros.
+    """
+    if pd.isna(val):
+        return 0.0
+    val_str = str(val).strip().replace(',', '.')
+    # Extrae solo el patrón de número decimal válido (puede incluir signo negativo)
+    match = re.search(r'[-+]?\d*\.\d+|\d+', val_str)
+    if match:
+        try:
+            return float(match.group())
+        except ValueError:
+            return 0.0
+    return 0.0
 
 # =========================================================
 # MÓDULO DE AUTENTICACIÓN (LOGIN)
@@ -98,7 +115,7 @@ else:
         st.rerun()
 
 # =========================================================
-# PANEL PRINCIPAL (SÓLO ACCESIBLE SI ESTÁ LOGUEADO)
+# PANEL PRINCIPAL
 # =========================================================
 if st.session_state.get("logueado"):
     st.subheader("⚙️ Configuración de Procesamiento GIS")
@@ -109,7 +126,7 @@ if st.session_state.get("logueado"):
     with col_m:
         tipo_mapa = st.radio("Tipo de consulta base", ["TOTAL RUTA", "SOLO PENDIENTES"], horizontal=True)
 
-    # Configuración dinámica de períodos históricos basados en el mes actual
+    # Configuración de períodos históricos
     actual = datetime.now()
     mes_1 = (actual - relativedelta(months=1)).strftime("%Y%m")
     mes_2 = (actual - relativedelta(months=2)).strftime("%Y%m")
@@ -120,7 +137,6 @@ if st.session_state.get("logueado"):
     anio = actual.year
     mes = actual.month
 
-    # Retroceder en el tiempo construyendo los períodos hasta septiembre de 2024
     while anio > 2024 or (anio == 2024 and mes >= 9):
         periodos.append(f"{anio}{mes:02d}")
         mes -= 1
@@ -135,58 +151,49 @@ if st.session_state.get("logueado"):
     # =====================================================
     if st.button("🛰️ PROCESAR ANÁLISIS GIS", use_container_width=True):
         try:
-            # Limpiar caché de estados previos
-            if "df_final" in st.session_state:
-                del st.session_state["df_final"]
-                del st.session_state["excel_bytes"]
-
             session = st.session_state["session"]
             hoy = datetime.now().strftime("%Y-%m-%d")
 
-            # 1. Definición de URL Base de descarga según el criterio seleccionado
             if tipo_mapa == "SOLO PENDIENTES":
                 url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/LSC/0/9/0"
             else:
                 url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/0/0/9/0"
 
-            # 2. Descarga del archivo Excel base actual
+            # Descarga base actual
             r = session.get(url_actual, headers=HEADERS, timeout=180)
             if r.status_code != 200 or r.content[:2] != b"PK":
-                st.error("❌ Error al descargar datos base del servidor Distriluz. Verifica los parámetros.")
+                st.error("❌ Error al descargar datos base de la plataforma.")
                 st.stop()
 
             df_actual = pd.read_excel(BytesIO(r.content))
 
-            # --- PARADA DE SEGURIDAD OPTIMIZADA: DETENER SI ES 0 ---
             if len(df_actual) == 0:
-                st.warning(f"⚠️ La ruta {ruta} tiene 0 registros en '{tipo_mapa}'. No se consumirá histórico ni se cargará mapa.")
+                st.warning(f"⚠️ La ruta {ruta} tiene 0 registros en '{tipo_mapa}'.")
                 st.stop()
-            # -------------------------------------------------------
 
-            st.success(f"✅ Datos base obtenidos con éxito. Registros actuales a evaluar: {len(df_actual):,}")
+            st.success(f"✅ Registros base obtenidos: {len(df_actual):,}")
 
-            # Identificación inteligente de la columna 'Suministro'
+            # Buscar columna Suministro
             col_suministro = next((c for c in df_actual.columns if "suministro" in str(c).lower()), None)
             if not col_suministro:
-                st.error("❌ No se encontró una columna que contenga el nombre 'suministro' en el archivo maestro.")
+                st.error("❌ No se encontró la columna 'suministro'.")
                 st.stop()
 
             suministros_actuales = df_actual[col_suministro].astype(str).unique()
 
-            # 3. Ciclo de extracción y filtrado en caliente de históricos
+            # Descarga de Históricos
             dfs_hist = []
             total = len(periodos_seleccionados)
             progress = st.progress(0)
             estado_descarga = st.empty()
 
             for i, periodo in enumerate(periodos_seleccionados):
-                estado_descarga.text(f"Descargando e interpolando período histórico: {i+1}/{total} ({periodo})")
+                estado_descarga.text(f"Descargando históricos: {i+1}/{total} ({periodo})")
                 url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta}/0/0/0/0/0/0/9/{periodo}"
                 
                 rh = session.get(url_hist, headers=HEADERS, timeout=180)
                 if rh.status_code == 200 and rh.content[:2] == b"PK":
                     df_temp = pd.read_excel(BytesIO(rh.content))
-                    # Filtrar de inmediato para mantener en memoria sólo lo que cruza con nuestra muestra base actual
                     df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros_actuales)].copy()
                     df_temp["periodo_historico"] = periodo
                     dfs_hist.append(df_temp)
@@ -197,34 +204,40 @@ if st.session_state.get("logueado"):
             progress.empty()
 
             if not dfs_hist:
-                st.error("❌ Se descargaron históricos pero ningún suministro base coincide con el pasado histórico.")
+                st.error("❌ No se encontraron datos históricos válidos para estos suministros.")
                 st.stop()
 
-            # Consolidar registros históricos filtrados
             fusionado = pd.concat(dfs_hist, ignore_index=True)
 
-            # Identificación de columnas GPS
+            # Buscar columnas GPS dinámicamente
             lat_col = next((c for c in fusionado.columns if "lat" in str(c).lower()), None)
             lon_col = next((c for c in fusionado.columns if "lon" in str(c).lower()), None)
 
             if not lat_col or not lon_col:
-                st.error("❌ No se ubicaron las columnas de Latitud/Longitud en la estructura de datos descargada.")
+                st.error("❌ No se detectaron las columnas de Latitud o Longitud en los históricos.")
                 st.stop()
 
-            # Sanitización y limpieza estricta de coordenadas vacías o en cero (0.0)
-            fusionado[lat_col] = pd.to_numeric(fusionado[lat_col], errors="coerce")
-            fusionado[lon_col] = pd.to_numeric(fusionado[lon_col], errors="coerce")
-            fusionado = fusionado[(fusionado[lat_col] != 0) & (fusionado[lon_col] != 0)].dropna(subset=[lat_col, lon_col])
+            # --- CORRECCIÓN CRÍTICA DE FORMATO DE COORDENADAS ---
+            fusionado[lat_col] = fusionado[lat_col].apply(clean_coordinate)
+            fusionado[lon_col] = fusionado[lon_col].apply(clean_coordinate)
+            
+            # Descartar coordenadas inválidas, ceros absolutos o desvíos imposibles
+            fusionado = fusionado[
+                (fusionado[lat_col] != 0.0) & 
+                (fusionado[lon_col] != 0.0) & 
+                (fusionado[lat_col] < 5.0) & (fusionado[lat_col] > -20.0) & # Filtro geográfico Perú amplio
+                (fusionado[lon_col] < -60.0) & (fusionado[lon_col] > -85.0)
+            ].dropna(subset=[lat_col, lon_col])
 
             if len(fusionado) == 0:
-                st.error("❌ Los archivos históricos existen pero no cuentan con ninguna coordenada GPS válida.")
+                st.error("❌ No hay coordenadas válidas que se sitúen dentro del rango geográfico.")
                 st.stop()
 
-            # Cálculo del baricentro de la nube de puntos general
+            # Obtener el centro real usando la mediana para evitar distorsiones lineales por ruido externo
             centro_lat = fusionado[lat_col].median()
             centro_lon = fusionado[lon_col].median()
 
-            # 4. Motor Algorítmico GIS para la validación espacial de puntos por Suministro
+            # Motor GIS de asignación espacial por Suministro
             resultados = []
             grupos = fusionado.groupby(col_suministro)
             total_grupos = len(grupos)
@@ -251,12 +264,12 @@ if st.session_state.get("logueado"):
                     dispersion = matriz.max()
 
                     if dispersion > 500:
-                        # Si supera el umbral de dispersión se extrae el punto más cercano a la mediana general (Evita rebotes a bases operativas lejanas)
+                        # Si rebota drásticamente, amarra al centro real del sector para romper la distorsión de líneas
                         distancias = [haversine(pt[0], pt[1], centro_lat, centro_lon) for pt in puntos]
                         idx = int(np.argmin(distancias))
                         estado = "REBOTADO"
                     else:
-                        # Selecciona el punto con menor distancia acumulada respecto a su propio grupo histórico
+                        # Punto óptimo central del suministro
                         suma = matriz.sum(axis=1)
                         idx = int(np.argmin(suma))
                         estado = "VALIDADO"
@@ -271,43 +284,42 @@ if st.session_state.get("logueado"):
                     "estado_gps": estado,
                     "dispersion_m": round(dispersion, 2),
                     "meses_historicos": meses,
-                    "google_maps": f"https://www.google.com/maps/?q={lat_final},{lon_final}"
+                    "google_maps": f"https://www.google.com/maps?q={lat_final},{lon_final}"
                 })
                 progress_gis.progress((i + 1) / total_grupos)
 
             progress_gis.empty()
 
-            # Combinar la información espacial recalculada con el dataframe original
             df_gps = pd.DataFrame(resultados)
             df_final = df_actual.merge(df_gps, on=col_suministro, how="left")
 
-            # 5. Guardado persistente en memoria para evitar colisiones I/O de disco local
+            # Preparar buffer Excel en memoria
             salida = f"GIS_{ruta}.xlsx"
             output_excel = BytesIO()
             with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
                 df_final.to_excel(writer, index=False, sheet_name="GIS")
             excel_bytes = output_excel.getvalue()
 
-            st.success("✅ Procesamiento espacial completado con éxito.")
+            st.success("✅ Procesamiento espacial completado.")
 
-            # Botón de Descarga Seguro
             st.download_button(
-                "📥 DESCARGAR EXCEL DE ENRUTAMIENTO FINAL",
+                "📥 DESCARGAR EXCEL FINAL",
                 excel_bytes,
                 file_name=salida,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
             # =================================================
-            # MAPA AVANZADO INTEGRADO CON PINES Y TEXTO INFERIOR
+            # RENDERIZADO DEL MAPA MULTICAPA
             # =================================================
             st.subheader("🗺️ MAPA CORREGIDO DE GEOLOCALIZACIÓN")
             df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
 
             if len(df_mapa) > 0:
-                mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=15, tiles=None)
+                # Inicializar mapa centrado en el baricentro real recalculado
+                mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=16, tiles=None)
 
-                # Definición de capas base (Estilos de visualización intercambiables)
+                # Capas Base
                 folium.TileLayer("OpenStreetMap", name="Mapa Normal").add_to(mapa)
                 folium.TileLayer(
                     tiles="https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png",
@@ -322,16 +334,15 @@ if st.session_state.get("logueado"):
                     control=True
                 ).add_to(mapa)
 
-                # Configuración de Clústeres para mejorar rendimiento visual
+                # Clúster controlado (Desactiva agrupación a zoom alto para ver los pines individuales)
                 cluster = MarkerCluster(
                     name="Suministros Distribuidos",
                     overlay=True,
                     control=False,
-                    disableClusteringAtZoom=18
+                    disableClusteringAtZoom=17 
                 ).add_to(mapa)
 
                 for _, row in df_mapa.iterrows():
-                    # Definición de paleta de color por estado analizado
                     color = "green"
                     if row["estado_gps"] == "REBOTADO":
                         color = "red"
@@ -345,30 +356,25 @@ if st.session_state.get("logueado"):
 
                     popup_html = (
                         f"<b>Suministro:</b> {sum_str}<br>"
-                        f"<b>Estado de Validación:</b> {est_str}<br>"
-                        f"<b>Máxima Dispersión:</b> {disp_str} metros<br>"
+                        f"<b>Estado:</b> {est_str}<br>"
+                        f"<b>Dispersión:</b> {disp_str} m<br>"
                         f"<a href='{g_maps_url}' target='_blank'>🌍 Abrir en Google Maps</a>"
                     )
 
-                    # 1. GENERACIÓN DEL MARCADOR PIN DE LOCALIZACIÓN
+                    # 1. ICONO PIN DE LOCALIZACIÓN
                     folium.Marker(
                         location=[row["latitud_validada"], row["longitud_validada"]],
                         popup=folium.Popup(popup_html, max_width=300),
                         tooltip=f"Suministro: {sum_str}",
-                        icon=folium.Icon(
-                            color=color, 
-                            icon="map-marker",  # Ícono clásico de marcador de mapa
-                            prefix="fa"         # Biblioteca FontAwesome
-                        )
+                        icon=folium.Icon(color=color, icon="map-marker", prefix="fa")
                     ).add_to(cluster)
 
-                    # 2. GENERACIÓN DEL TEXTO SITUADO EXACTAMENTE ABAJO DEL PIN
-                    # icon_anchor=(75, -12) centra horizontalmente el texto y lo mueve hacia abajo
+                    # 2. TEXTO INFERIOR EXACTAMENTE DEBAJO DEL PIN (Centrado)
                     folium.Marker(
                         location=[row["latitud_validada"], row["longitud_validada"]],
                         icon=folium.DivIcon(
                             icon_size=(150, 36),
-                            icon_anchor=(75, -12),
+                            icon_anchor=(75, -14), # 75 centra en X, -14 empuja abajo en Y sacándolo del pin
                             html=f"""
                             <div style="
                                 font-size: 9px;
@@ -381,7 +387,7 @@ if st.session_state.get("logueado"):
                                 text-align: center;
                                 width: fit-content;
                                 margin: 0 auto;
-                                box-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+                                box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
                             ">
                                 {sum_str}
                             </div>
@@ -389,14 +395,11 @@ if st.session_state.get("logueado"):
                         )
                     ).add_to(cluster)
 
-                # Agregar controles de mapas interactivos al lienzo
                 folium.LayerControl().add_to(mapa)
                 mapa_html = mapa._repr_html_()
-
-                # Renderizar HTML mediante el componente nativo de Streamlit
                 components.html(mapa_html, height=800, scrolling=True)
             else:
-                st.warning("⚠️ El proceso concluyó pero los registros base carecen de coordenadas mapeables.")
+                st.warning("⚠️ No se procesaron coordenadas utilizables para el mapa interactivo.")
 
         except Exception as e:
-            st.error(f"Se capturó un fallo crítico en ejecución: {str(e)}")
+            st.error(f"Fallo crítico en procesamiento: {str(e)}")
