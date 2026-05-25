@@ -283,10 +283,6 @@ if st.session_state.get("logueado"):
                     f"0/0/9/0"
                 )
 
-            st.info(
-                "📥 Descargando base..."
-            )
-
             r = session.get(
                 url_base,
                 headers=HEADERS,
@@ -339,7 +335,7 @@ if st.session_state.get("logueado"):
             ].astype(str).unique()
 
             # =================================================
-            # HISTÓRICOS
+            # DESCARGAR HISTÓRICOS
             # =================================================
 
             dfs_hist = []
@@ -350,12 +346,15 @@ if st.session_state.get("logueado"):
 
             progress = st.progress(0)
 
+            estado = st.empty()
+
             for i, periodo in enumerate(
                 periodos_seleccionados
             ):
 
-                st.info(
-                    f"📥 Descargando {periodo}"
+                estado.text(
+                    f"Procesando "
+                    f"{i+1}/{total}"
                 )
 
                 url_hist = (
@@ -400,6 +399,9 @@ if st.session_state.get("logueado"):
                     (i + 1) / total
                 )
 
+            estado.empty()
+            progress.empty()
+
             if not dfs_hist:
 
                 st.error(
@@ -407,6 +409,10 @@ if st.session_state.get("logueado"):
                 )
 
                 st.stop()
+
+            # =================================================
+            # FUSIÓN
+            # =================================================
 
             fusionado = pd.concat(
                 dfs_hist,
@@ -504,7 +510,7 @@ if st.session_state.get("logueado"):
                     lat_final = puntos[0][0]
                     lon_final = puntos[0][1]
 
-                    estado = "UNICO"
+                    estado_gps = "UNICO"
 
                     dispersion = 0
 
@@ -556,7 +562,7 @@ if st.session_state.get("logueado"):
                             )
                         )
 
-                        estado = "REBOTADO"
+                        estado_gps = "REBOTADO"
 
                     else:
 
@@ -570,7 +576,7 @@ if st.session_state.get("logueado"):
                             )
                         )
 
-                        estado = "VALIDADO"
+                        estado_gps = "VALIDADO"
 
                     lat_final = puntos[idx][0]
                     lon_final = puntos[idx][1]
@@ -587,7 +593,7 @@ if st.session_state.get("logueado"):
                     lon_final,
 
                     "estado_gps":
-                    estado,
+                    estado_gps,
 
                     "dispersion_m":
                     round(
@@ -610,8 +616,10 @@ if st.session_state.get("logueado"):
                     / total_grupos
                 )
 
+            progress_gis.empty()
+
             # =================================================
-            # RESULTADO
+            # RESULTADO FINAL
             # =================================================
 
             df_gps = pd.DataFrame(
@@ -644,7 +652,7 @@ if st.session_state.get("logueado"):
                 )
 
             # =================================================
-            # SESSION STATE
+            # GUARDAR EN SESSION
             # =================================================
 
             st.session_state[
@@ -656,7 +664,7 @@ if st.session_state.get("logueado"):
             ] = salida
 
             st.success(
-                "✅ GIS generado"
+                "✅ GIS generado correctamente"
             )
 
         except Exception as e:
