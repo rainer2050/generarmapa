@@ -775,17 +775,22 @@ if "df_final" in st.session_state:
                     row["longitud_validada"]
                 ],
 
-                icon=folium.DivIcon(
-                    html=f"""
-                    <div style="
-                        font-size:8px;
-                        color:black;
-                        font-weight:bold;
-                        white-space: nowrap;
-                    ">
-                        {row[col_suministro]}
-                    </div>
-                    """
+              icon=folium.DivIcon(
+        icon_size=(150,36),
+        icon_anchor=(-10,0),
+
+        html=f"""
+        <div style="
+            font-size:8px;
+            color:black;
+            font-weight:bold;
+            white-space: nowrap;
+            margin-left:12px;
+            margin-top:-2px;
+        ">
+            {row[col_suministro]}
+        </div>
+        """
                 )
 
             ).add_to(mapa)
