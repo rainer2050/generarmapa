@@ -1,3 +1,7 @@
+# =========================================================
+# IMPORTS
+# =========================================================
+
 import streamlit as st
 import requests
 import pandas as pd
@@ -16,7 +20,7 @@ from dateutil.relativedelta import relativedelta
 from math import radians, sin, cos, sqrt, atan2
 
 # =========================================================
-# CONFIG STREAMLIT
+# STREAMLIT CONFIG
 # =========================================================
 
 st.set_page_config(
@@ -122,24 +126,11 @@ if st.button("INICIAR SESIÓN"):
 
             st.stop()
 
-        match = re.search(
-            r"var DEFECTO_IDUUNN\s*=\s*'(\d+)';",
-            r.text
-        )
-
-        defecto_iduunn = (
-            match.group(1)
-            if match
-            else "0"
-        )
-
         st.session_state["session"] = session
         st.session_state["logueado"] = True
-        st.session_state["defecto_iduunn"] = defecto_iduunn
 
         st.success(
-            f"✅ Sesión iniciada "
-            f"Unidad {defecto_iduunn}"
+            "✅ Sesión iniciada correctamente"
         )
 
     except Exception as e:
@@ -335,7 +326,7 @@ if st.session_state.get("logueado"):
             ].astype(str).unique()
 
             # =================================================
-            # DESCARGAR HISTÓRICOS
+            # HISTÓRICOS
             # =================================================
 
             dfs_hist = []
@@ -346,16 +337,9 @@ if st.session_state.get("logueado"):
 
             progress = st.progress(0)
 
-            estado = st.empty()
-
             for i, periodo in enumerate(
                 periodos_seleccionados
             ):
-
-                estado.text(
-                    f"Procesando "
-                    f"{i+1}/{total}"
-                )
 
                 url_hist = (
                     f"http://sigof.distriluz.com.pe/"
@@ -399,7 +383,6 @@ if st.session_state.get("logueado"):
                     (i + 1) / total
                 )
 
-            estado.empty()
             progress.empty()
 
             if not dfs_hist:
@@ -651,10 +634,6 @@ if st.session_state.get("logueado"):
                     sheet_name="GIS"
                 )
 
-            # =================================================
-            # GUARDAR EN SESSION
-            # =================================================
-
             st.session_state[
                 "df_final"
             ] = df_final
@@ -662,6 +641,10 @@ if st.session_state.get("logueado"):
             st.session_state[
                 "salida"
             ] = salida
+
+            st.session_state[
+                "col_suministro"
+            ] = col_suministro
 
             st.success(
                 "✅ GIS generado correctamente"
@@ -683,6 +666,10 @@ if "df_final" in st.session_state:
 
     salida = st.session_state[
         "salida"
+    ]
+
+    col_suministro = st.session_state[
+        "col_suministro"
     ]
 
     # =====================================================
@@ -747,23 +734,60 @@ if "df_final" in st.session_state:
 
             popup = (
                 f"<b>Suministro:</b> "
-                f"{row.iloc[0]}<br>"
+                f"{row[col_suministro]}<br>"
                 f"<b>Estado:</b> "
                 f"{row['estado_gps']}<br>"
                 f"<b>Dispersión:</b> "
                 f"{row['dispersion_m']} m"
             )
 
+            # =================================================
+            # PUNTO
+            # =================================================
+
             folium.CircleMarker(
+
                 location=[
                     row["latitud_validada"],
                     row["longitud_validada"]
                 ],
+
                 radius=5,
+
                 popup=popup,
+
                 color=color,
+
                 fill=True,
+
                 fill_opacity=0.8
+
+            ).add_to(mapa)
+
+            # =================================================
+            # TEXTO SIEMPRE VISIBLE
+            # =================================================
+
+            folium.Marker(
+
+                location=[
+                    row["latitud_validada"],
+                    row["longitud_validada"]
+                ],
+
+                icon=folium.DivIcon(
+                    html=f"""
+                    <div style="
+                        font-size:8px;
+                        color:black;
+                        font-weight:bold;
+                        white-space: nowrap;
+                    ">
+                        {row[col_suministro]}
+                    </div>
+                    """
+                )
+
             ).add_to(mapa)
 
         st_folium(
@@ -772,6 +796,12 @@ if "df_final" in st.session_state:
             height=700,
             returned_objects=[]
         )
+
+    # =====================================================
+    # TABLA
+    # =====================================================
+
+    st.subheader("📊 RESULTADOS")
 
     st.dataframe(
         df_final,
