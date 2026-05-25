@@ -338,6 +338,14 @@ if st.session_state["logueado"]:
                 attr="Google Earth",
                 name="Vista Satélite"
             ).add_to(mapa)
+
+            plugins.Search(
+    layer=cluster,  # Busca dentro de tus marcadores
+    geom_type="Point",
+    placeholder="Buscar suministro...",
+    collapsed=True,
+    search_label="text" # O la propiedad que desees buscar
+).add_to(mapa)
     
             cluster = MarkerCluster(
                 name="Agrupaciones de Suministros",
