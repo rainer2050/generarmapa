@@ -207,6 +207,215 @@ if st.session_state["logueado"]:
             st.error(f"Error lecturistas: {e}")
             st.stop()
 
+  import streamlit as st
+import requests
+import pandas as pd
+import numpy as np
+import folium
+import streamlit.components.v1 as components
+
+from folium import plugins
+from folium.plugins import MarkerCluster
+
+from bs4 import BeautifulSoup
+from io import BytesIO
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from math import radians, sin, cos, sqrt, atan2
+
+# =========================================================
+# CONFIGURACIÓN
+# =========================================================
+
+st.set_page_config(
+    page_title="SIGOF GIS AVANZADO",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+LOGIN_URL = "http://sigof.distriluz.com.pe/plus/usuario/login"
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Referer": LOGIN_URL,
+}
+
+st.title("🛰️ SIGOF GIS AVANZADO")
+
+# =========================================================
+# SESSION STATE
+# =========================================================
+
+if "logueado" not in st.session_state:
+    st.session_state["logueado"] = False
+
+# =========================================================
+# FUNCIÓN HAVERSINE
+# =========================================================
+
+def haversine(lat1, lon1, lat2, lon2):
+
+    R = 6371000
+
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+
+    a = (
+        sin(dlat / 2) ** 2
+        + cos(radians(lat1))
+        * cos(radians(lat2))
+        * sin(dlon / 2) ** 2
+    )
+
+    return 2 * R * atan2(sqrt(a), sqrt(1 - a))
+
+# =========================================================
+# LOGIN
+# =========================================================
+
+if not st.session_state["logueado"]:
+
+    usuario = st.text_input("Usuario SIGOF")
+    password = st.text_input("Contraseña", type="password")
+
+    if st.button("INICIAR SESIÓN"):
+
+        try:
+
+            session = requests.Session()
+
+            login_page = session.get(
+                LOGIN_URL,
+                headers=HEADERS,
+                timeout=60
+            )
+
+            soup = BeautifulSoup(
+                login_page.text,
+                "html.parser"
+            )
+
+            csrf = soup.find(
+                "input",
+                {"name": "_csrf_token"}
+            )
+
+            credentials = {
+                "data[Usuario][usuario]": usuario,
+                "data[Usuario][pass]": password
+            }
+
+            if csrf:
+                credentials["_csrf_token"] = csrf["value"]
+
+            r = session.post(
+                LOGIN_URL,
+                data=credentials,
+                headers=HEADERS,
+                timeout=60
+            )
+
+            if "Salir" not in r.text:
+                st.error("❌ Usuario o contraseña incorrectos")
+                st.stop()
+
+            st.success("✅ Sesión iniciada correctamente")
+
+            st.session_state["session"] = session
+            st.session_state["logueado"] = True
+
+            st.rerun()
+
+        except Exception as e:
+            st.error(str(e))
+
+# =========================================================
+# PANEL PRINCIPAL
+# =========================================================
+
+if st.session_state["logueado"]:
+
+    session = st.session_state["session"]
+
+    st.subheader("⚙️ CONFIGURACIÓN GIS")
+
+    modo = st.radio(
+        "Modo trabajo",
+        ["POR RUTA", "POR LECTURISTA"]
+    )
+
+    tipo_mapa = st.radio(
+        "Tipo",
+        ["TOTAL", "PENDIENTES"]
+    )
+
+    # =====================================================
+    # POR RUTA
+    # =====================================================
+
+    if modo == "POR RUTA":
+
+        codigo = st.text_input(
+            "Código ruta",
+            placeholder="Ejemplo: 46516"
+        )
+
+    # =====================================================
+    # POR LECTURISTA
+    # =====================================================
+
+    else:
+
+        try:
+
+            url_lect = (
+                "http://sigof.distriluz.com.pe/"
+                "plus/ValidaImei/listarusuario"
+            )
+
+            r_lect = session.get(
+                url_lect,
+                headers=HEADERS,
+                timeout=120
+            )
+
+            usuarios = r_lect.json()
+
+            lecturistas = []
+
+            for u in usuarios:
+
+                if not u.get("Roles"):
+                    continue
+
+                for rol in u["Roles"]:
+
+                    if rol.get("nombre") == "Lecturista":
+
+                        lecturistas.append({
+                            "nombre": u["NombreUsuario"],
+                            "id": str(u["IdProveedorPersonal"])
+                        })
+
+                        break
+
+            dict_lect = {
+                x["nombre"]: x["id"]
+                for x in lecturistas
+            }
+
+            nombre_lect = st.selectbox(
+                "Seleccione Lecturista",
+                sorted(dict_lect.keys())
+            )
+
+            codigo = dict_lect[nombre_lect]
+
+        except Exception as e:
+
+            st.error(f"Error lecturistas: {e}")
+            st.stop()
+
   # =====================================================
 # PERIODOS
 # =====================================================
