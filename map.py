@@ -1,3 +1,6 @@
+# =========================================================
+# IMPORTS
+# =========================================================
 
 import streamlit as st
 import requests
@@ -16,7 +19,7 @@ from dateutil.relativedelta import relativedelta
 from math import radians, sin, cos, sqrt, atan2
 
 # =========================================================
-# CONFIGURACIÓN
+# CONFIG
 # =========================================================
 
 st.set_page_config(
@@ -35,23 +38,14 @@ HEADERS = {
 st.title("🛰️ SIGOF GIS AVANZADO")
 
 # =========================================================
-# SESSION STATE
+# SESSION
 # =========================================================
 
 if "logueado" not in st.session_state:
     st.session_state["logueado"] = False
 
-if "mapa_html" not in st.session_state:
-    st.session_state["mapa_html"] = None
-
-if "excel_data" not in st.session_state:
-    st.session_state["excel_data"] = None
-
-if "excel_nombre" not in st.session_state:
-    st.session_state["excel_nombre"] = None
-
 # =========================================================
-# FUNCIÓN HAVERSINE
+# HAVERSINE
 # =========================================================
 
 def haversine(lat1, lon1, lat2, lon2):
@@ -131,7 +125,7 @@ if not st.session_state["logueado"]:
             st.error(str(e))
 
 # =========================================================
-# PANEL PRINCIPAL
+# PANEL
 # =========================================================
 
 if st.session_state["logueado"]:
@@ -150,27 +144,19 @@ if st.session_state["logueado"]:
     )
 
     # =====================================================
-    # TIPO
+    # TIPO CONSULTA LECTURISTA
     # =====================================================
+
+    tipo_lecturista = "TODOS"
 
     if modo == "POR LECTURISTA":
 
-        tipo_mapa = st.radio(
-            "Tipo",
+        tipo_lecturista = st.radio(
+            "Filtro Lecturista",
             [
                 "TODOS",
                 "PENDIENTES",
                 "PENDIENTES + RELECTURAS"
-            ]
-        )
-
-    else:
-
-        tipo_mapa = st.radio(
-            "Tipo",
-            [
-                "TOTAL",
-                "PENDIENTES"
             ]
         )
 
@@ -182,7 +168,7 @@ if st.session_state["logueado"]:
 
         codigo = st.text_input(
             "Código ruta",
-            placeholder="Ejemplo: 46516"
+            placeholder="Ejemplo: 68724"
         )
 
     # =====================================================
@@ -253,7 +239,7 @@ if st.session_state["logueado"]:
         )
 
         archivo_excel = st.file_uploader(
-            "O subir Excel",
+            "O cargar Excel",
             type=["xlsx"]
         )
 
@@ -302,7 +288,7 @@ if st.session_state["logueado"]:
     )
 
     # =====================================================
-    # PROCESAR GIS
+    # PROCESAR
     # =====================================================
 
     if st.button("🛰️ PROCESAR GIS"):
@@ -317,27 +303,16 @@ if st.session_state["logueado"]:
 
             if modo == "POR RUTA":
 
-                if tipo_mapa == "PENDIENTES":
-
-                    url_actual = (
-                        f"http://sigof.distriluz.com.pe/"
-                        f"plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U/{hoy}/{hoy}/0/0/0/"
-                        f"{codigo}/0/0/0/0/LSC/0/9/0"
-                    )
-
-                else:
-
-                    url_actual = (
-                        f"http://sigof.distriluz.com.pe/"
-                        f"plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U/{hoy}/{hoy}/0/0/0/"
-                        f"{codigo}/0/0/0/0/0/0/9/0"
-                    )
+                url_actual = (
+                    f"http://sigof.distriluz.com.pe/"
+                    f"plus/Reportes/ajax_ordenes_historico_xls/"
+                    f"U/{hoy}/{hoy}/0/0/0/"
+                    f"{codigo}/0/0/0/0/0/0/9/0"
+                )
 
             elif modo == "POR LECTURISTA":
 
-                if tipo_mapa == "PENDIENTES":
+                if tipo_lecturista == "PENDIENTES":
 
                     url_actual = (
                         f"http://sigof.distriluz.com.pe/"
@@ -346,9 +321,9 @@ if st.session_state["logueado"]:
                         f"{codigo}/0/0/LSC/0/9/0"
                     )
 
-                elif tipo_mapa == "PENDIENTES + RELECTURAS":
+                elif tipo_lecturista == "PENDIENTES + RELECTURAS":
 
-                    url_lsc = (
+                    url_pend = (
                         f"http://sigof.distriluz.com.pe/"
                         f"plus/Reportes/ajax_ordenes_historico_xls/"
                         f"U,L/{hoy}/{hoy}/0/0/0/0/0/"
@@ -373,53 +348,55 @@ if st.session_state["logueado"]:
 
             else:
 
-                lista_suministros = ""
+                lista_sum = []
 
                 if suministros_manual.strip():
 
-                    lista_suministros = ",".join([
+                    lista_sum.extend([
                         x.strip()
                         for x in suministros_manual.split(",")
                         if x.strip()
                     ])
 
-                elif archivo_excel:
+                if archivo_excel:
 
                     df_excel = pd.read_excel(archivo_excel)
 
-                    lista_suministros = ",".join(
+                    lista_sum.extend(
                         df_excel.iloc[:, 0]
                         .astype(str)
                         .tolist()
                     )
 
-                else:
+                lista_sum = list(set(lista_sum))
 
-                    st.error("❌ Ingrese suministros")
+                if not lista_sum:
+                    st.error("❌ No hay suministros")
                     st.stop()
+
+                texto_sum = ",".join(lista_sum)
 
                 url_actual = (
                     f"http://sigof.distriluz.com.pe/"
                     f"plus/Reportes/ajax_ordenes_historico_xls/"
                     f"U,S/{hoy}/{hoy}/0/0/0/0/"
-                    f"{lista_suministros}"
-                    f"/0/0/0/0/0/9/0"
+                    f"{texto_sum}/0/0/0/0/0/9/0"
                 )
 
             # =================================================
-            # DESCARGA ACTUAL
+            # DESCARGA BASE
             # =================================================
 
-            with st.spinner("📥 Descargando actual..."):
+            with st.spinner("📥 Descargando base..."):
 
                 if (
                     modo == "POR LECTURISTA"
                     and
-                    tipo_mapa == "PENDIENTES + RELECTURAS"
+                    tipo_lecturista == "PENDIENTES + RELECTURAS"
                 ):
 
                     r1 = session.get(
-                        url_lsc,
+                        url_pend,
                         headers=HEADERS,
                         timeout=180
                     )
@@ -432,32 +409,24 @@ if st.session_state["logueado"]:
 
                     dfs_union = []
 
-                    if r1.status_code == 200 and r1.content[:2] == b"PK":
-
+                    if r1.content[:2] == b"PK":
                         dfs_union.append(
                             pd.read_excel(BytesIO(r1.content))
                         )
 
-                    if r2.status_code == 200 and r2.content[:2] == b"PK":
-
+                    if r2.content[:2] == b"PK":
                         dfs_union.append(
                             pd.read_excel(BytesIO(r2.content))
                         )
 
                     if not dfs_union:
-
-                        st.warning(
-                            "⚠️ No existen pendientes ni relecturas."
-                        )
-
+                        st.warning("⚠️ Sin pendientes")
                         st.stop()
 
                     df_actual = pd.concat(
                         dfs_union,
                         ignore_index=True
                     )
-
-                    # FILTRO RESULTADO VACÍO
 
                     if "Resultado" in df_actual.columns:
 
@@ -474,12 +443,8 @@ if st.session_state["logueado"]:
                         timeout=180
                     )
 
-                    if r.status_code != 200:
-                        st.error("❌ Error servidor")
-                        st.stop()
-
                     if r.content[:2] != b"PK":
-                        st.warning("⚠️ No existen registros.")
+                        st.warning("⚠️ Sin registros")
                         st.stop()
 
                     df_actual = pd.read_excel(
@@ -487,8 +452,7 @@ if st.session_state["logueado"]:
                     )
 
             if df_actual.empty:
-
-                st.warning("⚠️ Sin registros.")
+                st.warning("⚠️ No existen registros")
                 st.stop()
 
             st.success(
@@ -496,7 +460,7 @@ if st.session_state["logueado"]:
             )
 
             # =================================================
-            # SUMINISTRO
+            # COLUMNAS
             # =================================================
 
             col_suministro = None
@@ -508,8 +472,7 @@ if st.session_state["logueado"]:
                     break
 
             if not col_suministro:
-
-                st.error("❌ No existe columna suministro")
+                st.error("❌ No existe suministro")
                 st.stop()
 
             suministros = (
@@ -519,129 +482,30 @@ if st.session_state["logueado"]:
             )
 
             # =================================================
-            # RUTAS
-            # =================================================
-
-            rutas_detectadas = []
-
-            if modo == "POR LECTURISTA":
-
-                col_ruta = None
-
-                for c in df_actual.columns:
-
-                    if "ruta" in str(c).lower():
-                        col_ruta = c
-                        break
-
-                if col_ruta:
-
-                    rutas_texto = (
-                        df_actual[col_ruta]
-                        .dropna()
-                        .astype(str)
-                        .unique()
-                        .tolist()
-                    )
-
-                    for rt in rutas_texto:
-
-                        if "-" in rt:
-
-                            codigo_ruta = (
-                                rt.split("-")[0]
-                                .strip()
-                            )
-
-                            if codigo_ruta.isdigit():
-
-                                rutas_detectadas.append(
-                                    codigo_ruta
-                                )
-
-                    rutas_detectadas = list(
-                        set(rutas_detectadas)
-                    )
-
-            elif modo == "POR RUTA":
-
-                rutas_detectadas = [codigo]
-
-            # =================================================
             # HISTÓRICOS
             # =================================================
 
             dfs_hist = []
 
-            cantidad_suministros = len(suministros)
-
-            usar_filtro_suministro = (
-                cantidad_suministros < 100
+            usar_por_suministro = (
+                len(suministros) <= 100
             )
-
-            if usar_filtro_suministro:
-
-                st.info(
-                    f"⚡ Solo se detectaron "
-                    f"{cantidad_suministros} suministros. "
-                    f"Se usará búsqueda histórica "
-                    f"directa por suministro."
-                )
-
-            else:
-
-                st.info(
-                    f"🛣️ Se usarán históricos "
-                    f"por rutas "
-                    f"({cantidad_suministros} suministros)."
-                )
-
-            # =================================================
-            # CONTADOR
-            # =================================================
-
-            if usar_filtro_suministro:
-
-                total_descargas = len(
-                    periodos_seleccionados
-                )
-
-            else:
-
-                total_descargas = (
-                    len(rutas_detectadas)
-                    * len(periodos_seleccionados)
-                )
-
-            contador = 0
 
             progress = st.progress(0)
 
-            estado = st.empty()
+            if usar_por_suministro:
 
-            # =================================================
-            # HISTÓRICO POR SUMINISTRO
-            # =================================================
+                texto_sum = ",".join(suministros)
 
-            if usar_filtro_suministro:
+                total = len(periodos_seleccionados)
 
-                lista_suministros = ",".join(
-                    map(str, suministros[:100])
-                )
-
-                for periodo in periodos_seleccionados:
-
-                    estado.write(
-                        f"📥 Histórico suministro "
-                        f"| Periodo {periodo}"
-                    )
+                for i, periodo in enumerate(periodos_seleccionados):
 
                     url_hist = (
                         f"http://sigof.distriluz.com.pe/"
                         f"plus/Reportes/ajax_ordenes_historico_xls/"
                         f"U,S/{hoy}/{hoy}/0/0/0/0/"
-                        f"{lista_suministros}"
-                        f"/0/0/0/0/0/9/{periodo}"
+                        f"{texto_sum}/0/0/0/0/0/9/{periodo}"
                     )
 
                     try:
@@ -652,11 +516,7 @@ if st.session_state["logueado"]:
                             timeout=180
                         )
 
-                        if (
-                            rh.status_code == 200
-                            and
-                            rh.content[:2] == b"PK"
-                        ):
+                        if rh.content[:2] == b"PK":
 
                             df_temp = pd.read_excel(
                                 BytesIO(rh.content)
@@ -671,29 +531,55 @@ if st.session_state["logueado"]:
                     except:
                         pass
 
-                    contador += 1
-
                     progress.progress(
-                        min(
-                            contador / total_descargas,
-                            1.0
-                        )
+                        (i + 1) / total
                     )
 
-            # =================================================
-            # HISTÓRICO POR RUTA
-            # =================================================
-
             else:
+
+                rutas_detectadas = []
+
+                if modo == "POR LECTURISTA":
+
+                    for c in df_actual.columns:
+
+                        if "ruta" in str(c).lower():
+
+                            rutas = (
+                                df_actual[c]
+                                .dropna()
+                                .astype(str)
+                                .unique()
+                            )
+
+                            for rt in rutas:
+
+                                if "-" in rt:
+
+                                    cod = (
+                                        rt.split("-")[0]
+                                        .strip()
+                                    )
+
+                                    if cod.isdigit():
+                                        rutas_detectadas.append(cod)
+
+                            break
+
+                elif modo == "POR RUTA":
+
+                    rutas_detectadas = [codigo]
+
+                total = (
+                    len(rutas_detectadas)
+                    * len(periodos_seleccionados)
+                )
+
+                contador = 0
 
                 for ruta_hist in rutas_detectadas:
 
                     for periodo in periodos_seleccionados:
-
-                        estado.write(
-                            f"📥 Ruta {ruta_hist} "
-                            f"| {periodo}"
-                        )
 
                         url_hist = (
                             f"http://sigof.distriluz.com.pe/"
@@ -710,11 +596,7 @@ if st.session_state["logueado"]:
                                 timeout=180
                             )
 
-                            if (
-                                rh.status_code == 200
-                                and
-                                rh.content[:2] == b"PK"
-                            ):
+                            if rh.content[:2] == b"PK":
 
                                 df_temp = pd.read_excel(
                                     BytesIO(rh.content)
@@ -738,15 +620,11 @@ if st.session_state["logueado"]:
                         contador += 1
 
                         progress.progress(
-                            min(
-                                contador / total_descargas,
-                                1.0
-                            )
+                            contador / total
                         )
 
             if not dfs_hist:
-
-                st.warning("⚠️ Sin históricos.")
+                st.warning("⚠️ Sin históricos")
                 st.stop()
 
             fusionado = pd.concat(
@@ -781,30 +659,15 @@ if st.session_state["logueado"]:
                 errors="coerce"
             )
 
+            fusionado = fusionado.dropna(
+                subset=[lat_col, lon_col]
+            )
+
             fusionado = fusionado[
                 (fusionado[lat_col] != 0)
                 &
                 (fusionado[lon_col] != 0)
             ]
-
-            # =================================================
-            # ÚLTIMO PERIODO SI SOLO HAY UNO
-            # =================================================
-
-            conteo_periodos = (
-                fusionado
-                .groupby(col_suministro)
-                ["periodo_historico"]
-                .nunique()
-            )
-
-            fusionado["solo_ultimo"] = (
-                fusionado[col_suministro]
-                .map(conteo_periodos) == 1
-            )
-
-            centro_lat = fusionado[lat_col].median()
-            centro_lon = fusionado[lon_col].median()
 
             # =================================================
             # GIS
@@ -816,27 +679,27 @@ if st.session_state["logueado"]:
                 col_suministro
             )
 
-            total_grupos = len(grupos)
-
             progress_gis = st.progress(0)
 
+            total_grupos = len(grupos)
+
             for i, (suministro, grupo) in enumerate(grupos):
+
+                grupo = grupo.sort_values(
+                    "periodo_historico",
+                    ascending=False
+                )
 
                 puntos = grupo[
                     [lat_col, lon_col]
                 ].values
-
-                meses = len(
-                    grupo["periodo_historico"]
-                    .unique()
-                )
 
                 if len(puntos) == 1:
 
                     lat_final = puntos[0][0]
                     lon_final = puntos[0][1]
 
-                    estado_gps = "ULTIMO PERIODO"
+                    estado_gps = "ULTIMO_PERIODO"
 
                     dispersion = 0
 
@@ -862,38 +725,14 @@ if st.session_state["logueado"]:
 
                     dispersion = matriz.max()
 
-                    if dispersion > 500:
+                    suma = matriz.sum(axis=1)
 
-                        distancias = [
-
-                            haversine(
-                                pt[0],
-                                pt[1],
-                                centro_lat,
-                                centro_lon
-                            )
-
-                            for pt in puntos
-                        ]
-
-                        idx = int(
-                            np.argmin(distancias)
-                        )
-
-                        estado_gps = "REBOTADO"
-
-                    else:
-
-                        suma = matriz.sum(axis=1)
-
-                        idx = int(
-                            np.argmin(suma)
-                        )
-
-                        estado_gps = "VALIDADO"
+                    idx = int(np.argmin(suma))
 
                     lat_final = puntos[idx][0]
                     lon_final = puntos[idx][1]
+
+                    estado_gps = "VALIDADO"
 
                 resultados.append({
 
@@ -910,8 +749,6 @@ if st.session_state["logueado"]:
                         2
                     ),
 
-                    "meses_historicos": meses,
-
                     "google_maps":
                     f"https://www.google.com/maps?q="
                     f"{lat_final},{lon_final}"
@@ -920,6 +757,10 @@ if st.session_state["logueado"]:
                 progress_gis.progress(
                     (i + 1) / total_grupos
                 )
+
+            # =================================================
+            # FINAL
+            # =================================================
 
             df_gps = pd.DataFrame(resultados)
 
@@ -948,10 +789,11 @@ if st.session_state["logueado"]:
 
             excel_data = output.getvalue()
 
-            st.session_state["excel_data"] = excel_data
-
-            st.session_state["excel_nombre"] = (
-                f"GIS_{modo}_{hoy}.xlsx"
+            st.download_button(
+                "📥 DESCARGAR EXCEL",
+                data=excel_data,
+                file_name=f"GIS_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
             # =================================================
@@ -965,6 +807,24 @@ if st.session_state["logueado"]:
                     "latitud_validada",
                     "longitud_validada"
                 ]
+            )
+
+            if df_mapa.empty:
+
+                st.warning(
+                    "⚠️ No existen coordenadas válidas para generar el mapa."
+                )
+
+                st.stop()
+
+            centro_lat = (
+                df_mapa["latitud_validada"]
+                .median()
+            )
+
+            centro_lon = (
+                df_mapa["longitud_validada"]
+                .median()
             )
 
             mapa = folium.Map(
@@ -996,14 +856,6 @@ if st.session_state["logueado"]:
 
             for _, row in df_mapa.iterrows():
 
-                color_icono = "green"
-
-                if row["estado_gps"] == "REBOTADO":
-                    color_icono = "red"
-
-                elif row["estado_gps"] == "ULTIMO PERIODO":
-                    color_icono = "blue"
-
                 popup_html = (
                     f"<b>Suministro:</b> "
                     f"{row[col_suministro]}<br>"
@@ -1012,8 +864,7 @@ if st.session_state["logueado"]:
                     f"<b>Dispersión:</b> "
                     f"{row['dispersion_m']} m<br>"
                     f"<a href='{row['google_maps']}' "
-                    f"target='_blank'>"
-                    f"🌍 Abrir Google Maps</a>"
+                    f"target='_blank'>🌍 Maps</a>"
                 )
 
                 folium.Marker(
@@ -1021,17 +872,15 @@ if st.session_state["logueado"]:
                         row["latitud_validada"],
                         row["longitud_validada"]
                     ],
-                    popup=popup_html,
-                    icon=folium.Icon(
-                        color=color_icono,
-                        icon="info-sign"
-                    )
+                    popup=popup_html
                 ).add_to(cluster)
 
             folium.LayerControl().add_to(mapa)
 
-            st.session_state["mapa_html"] = (
-                mapa._repr_html_()
+            components.html(
+                mapa._repr_html_(),
+                height=850,
+                scrolling=True
             )
 
         except Exception as e:
@@ -1039,29 +888,3 @@ if st.session_state["logueado"]:
             st.error(
                 f"Error general: {e}"
             )
-
-    # =====================================================
-    # MOSTRAR EXCEL
-    # =====================================================
-
-    if st.session_state["excel_data"]:
-
-        st.download_button(
-            "📥 DESCARGAR EXCEL",
-            data=st.session_state["excel_data"],
-            file_name=st.session_state["excel_nombre"],
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-    # =====================================================
-    # MOSTRAR MAPA
-    # =====================================================
-
-    if st.session_state["mapa_html"]:
-
-        components.html(
-            st.session_state["mapa_html"],
-            height=850,
-            scrolling=True
-        )
-
