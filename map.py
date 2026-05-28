@@ -40,14 +40,12 @@ st.title("🛰️ SIGOF GIS AVANZADO")
 if "logueado" not in st.session_state:
     st.session_state["logueado"] = False
 
+# Mantener mapa/excel
+if "df_final" not in st.session_state:
+    st.session_state["df_final"] = None
+
 if "mapa_html" not in st.session_state:
     st.session_state["mapa_html"] = None
-
-if "excel_data" not in st.session_state:
-    st.session_state["excel_data"] = None
-
-if "nombre_excel" not in st.session_state:
-    st.session_state["nombre_excel"] = None
 
 # =========================================================
 # FUNCIÓN HAVERSINE
@@ -76,11 +74,7 @@ def haversine(lat1, lon1, lat2, lon2):
 if not st.session_state["logueado"]:
 
     usuario = st.text_input("Usuario SIGOF")
-
-    password = st.text_input(
-        "Contraseña",
-        type="password"
-    )
+    password = st.text_input("Contraseña", type="password")
 
     if st.button("INICIAR SESIÓN"):
 
@@ -157,7 +151,7 @@ if st.session_state["logueado"]:
     )
 
     # =====================================================
-    # TIPO MAPA
+    # TIPO
     # =====================================================
 
     if modo == "POR LECTURISTA":
@@ -189,7 +183,7 @@ if st.session_state["logueado"]:
 
         codigo = st.text_input(
             "Código ruta",
-            placeholder="Ejemplo: 68724"
+            placeholder="Ejemplo: 46516"
         )
 
     # =====================================================
@@ -255,55 +249,13 @@ if st.session_state["logueado"]:
     else:
 
         suministros_manual = st.text_area(
-            "Ingresar suministros separados por coma",
-            height=120
+            "Ingresar suministros separados por coma"
         )
 
         archivo_excel = st.file_uploader(
-            "O cargar Excel",
+            "O subir Excel",
             type=["xlsx"]
         )
-
-        lista_suministros = []
-
-        if suministros_manual.strip():
-
-            lista_suministros.extend([
-                x.strip()
-                for x in suministros_manual.split(",")
-                if x.strip()
-            ])
-
-        if archivo_excel is not None:
-
-            try:
-
-                df_excel = pd.read_excel(
-                    archivo_excel
-                )
-
-                primera_col = df_excel.columns[0]
-
-                lista_excel = (
-                    df_excel[primera_col]
-                    .dropna()
-                    .astype(str)
-                    .tolist()
-                )
-
-                lista_suministros.extend(lista_excel)
-
-            except Exception as e:
-
-                st.error(
-                    f"Error leyendo Excel: {e}"
-                )
-
-        lista_suministros = list(
-            set(lista_suministros)
-        )
-
-        codigo = ",".join(lista_suministros)
 
     # =====================================================
     # PERIODOS
@@ -350,7 +302,7 @@ if st.session_state["logueado"]:
     )
 
     # =====================================================
-    # PROCESAR GIS
+    # PROCESAR
     # =====================================================
 
     if st.button("🛰️ PROCESAR GIS"):
@@ -360,14 +312,8 @@ if st.session_state["logueado"]:
             hoy = datetime.now().strftime("%Y-%m-%d")
 
             # =================================================
-            # OBTENER BASE ACTUAL
+            # URL ACTUAL
             # =================================================
-
-            df_actual = None
-
-            # =============================================
-            # POR RUTA
-            # =============================================
 
             if modo == "POR RUTA":
 
@@ -389,54 +335,9 @@ if st.session_state["logueado"]:
                         f"{codigo}/0/0/0/0/0/0/9/0"
                     )
 
-                r = session.get(
-                    url_actual,
-                    headers=HEADERS,
-                    timeout=180
-                )
-
-                if r.status_code != 200:
-                    st.error("❌ Error servidor")
-                    st.stop()
-
-                if r.content[:2] != b"PK":
-                    st.warning("⚠️ 0 registros encontrados")
-                    st.stop()
-
-                df_actual = pd.read_excel(
-                    BytesIO(r.content)
-                )
-
-            # =============================================
-            # POR LECTURISTA
-            # =============================================
-
             elif modo == "POR LECTURISTA":
 
-                if tipo_mapa == "TODOS":
-
-                    url_actual = (
-                        f"http://sigof.distriluz.com.pe/"
-                        f"plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U,L/{hoy}/{hoy}/0/0/0/0/0/"
-                        f"{codigo}/0/0/0/0/9/0"
-                    )
-
-                    r = session.get(
-                        url_actual,
-                        headers=HEADERS,
-                        timeout=180
-                    )
-
-                    if r.content[:2] != b"PK":
-                        st.warning("⚠️ 0 registros")
-                        st.stop()
-
-                    df_actual = pd.read_excel(
-                        BytesIO(r.content)
-                    )
-
-                elif tipo_mapa == "PENDIENTES":
+                if tipo_mapa == "PENDIENTES":
 
                     url_actual = (
                         f"http://sigof.distriluz.com.pe/"
@@ -445,23 +346,9 @@ if st.session_state["logueado"]:
                         f"{codigo}/0/0/LSC/0/9/0"
                     )
 
-                    r = session.get(
-                        url_actual,
-                        headers=HEADERS,
-                        timeout=180
-                    )
-
-                    if r.content[:2] != b"PK":
-                        st.warning("⚠️ 0 pendientes")
-                        st.stop()
-
-                    df_actual = pd.read_excel(
-                        BytesIO(r.content)
-                    )
-
                 elif tipo_mapa == "PENDIENTES + RELECTURAS":
 
-                    url_pend = (
+                    url_lsc = (
                         f"http://sigof.distriluz.com.pe/"
                         f"plus/Reportes/ajax_ordenes_historico_xls/"
                         f"U,L/{hoy}/{hoy}/0/0/0/0/0/"
@@ -475,94 +362,84 @@ if st.session_state["logueado"]:
                         f"{codigo}/0/0/REL/0/9/0"
                     )
 
-                    r1 = session.get(
-                        url_pend,
-                        headers=HEADERS,
-                        timeout=180
+                else:
+
+                    url_actual = (
+                        f"http://sigof.distriluz.com.pe/"
+                        f"plus/Reportes/ajax_ordenes_historico_xls/"
+                        f"U,L/{hoy}/{hoy}/0/0/0/0/0/"
+                        f"{codigo}/0/0/0/0/9/0"
                     )
-
-                    r2 = session.get(
-                        url_rel,
-                        headers=HEADERS,
-                        timeout=180
-                    )
-
-                    dfs_concat = []
-
-                    if r1.content[:2] == b"PK":
-
-                        df_p = pd.read_excel(
-                            BytesIO(r1.content)
-                        )
-
-                        dfs_concat.append(df_p)
-
-                    if r2.content[:2] == b"PK":
-
-                        df_r = pd.read_excel(
-                            BytesIO(r2.content)
-                        )
-
-                        dfs_concat.append(df_r)
-
-                    if not dfs_concat:
-
-                        st.warning(
-                            "⚠️ No existen pendientes ni relecturas."
-                        )
-
-                        st.stop()
-
-                    df_actual = pd.concat(
-                        dfs_concat,
-                        ignore_index=True
-                    )
-
-                    # =========================================
-                    # FILTRO RESULTADO VACÍO
-                    # =========================================
-
-                    col_resultado = None
-
-                    for c in df_actual.columns:
-
-                        if str(c).strip().lower() == "resultado":
-                            col_resultado = c
-                            break
-
-                    if col_resultado:
-
-                        df_actual = df_actual[
-                            df_actual[col_resultado]
-                            .fillna("")
-                            .astype(str)
-                            .str.strip()
-                            == ""
-                        ]
-
-                        st.info(
-                            f"📋 Resultado vacío: "
-                            f"{len(df_actual):,}"
-                        )
-
-            # =============================================
-            # POR SUMINISTROS
-            # =============================================
 
             else:
 
-                if not codigo:
-                    st.warning(
-                        "⚠️ Debe ingresar suministros"
+                lista_suministros = []
+
+                if suministros_manual.strip():
+
+                    lista_suministros.extend([
+                        x.strip()
+                        for x in suministros_manual.split(",")
+                        if x.strip()
+                    ])
+
+                if archivo_excel is not None:
+
+                    df_excel = pd.read_excel(archivo_excel)
+
+                    lista_suministros.extend(
+                        df_excel.iloc[:, 0]
+                        .astype(str)
+                        .tolist()
                     )
-                    st.stop()
+
+                lista_suministros = list(set(lista_suministros))
+
+                suministros_txt = ", ".join(lista_suministros)
 
                 url_actual = (
                     f"http://sigof.distriluz.com.pe/"
                     f"plus/Reportes/ajax_ordenes_historico_xls/"
                     f"U,S/{hoy}/{hoy}/0/0/0/0/"
-                    f"{codigo}/0/0/0/0/0/9/0"
+                    f"{suministros_txt}/0/0/0/0/0/9/0"
                 )
+
+            # =================================================
+            # DESCARGA ACTUAL
+            # =================================================
+
+            if modo == "POR LECTURISTA" and tipo_mapa == "PENDIENTES + RELECTURAS":
+
+                df_lsc = pd.DataFrame()
+                df_rel = pd.DataFrame()
+
+                r1 = session.get(url_lsc, headers=HEADERS, timeout=180)
+
+                if r1.status_code == 200 and r1.content[:2] == b"PK":
+
+                    df_lsc = pd.read_excel(BytesIO(r1.content))
+
+                r2 = session.get(url_rel, headers=HEADERS, timeout=180)
+
+                if r2.status_code == 200 and r2.content[:2] == b"PK":
+
+                    df_rel = pd.read_excel(BytesIO(r2.content))
+
+                    if "Resultado" in df_rel.columns:
+
+                        df_rel = df_rel[
+                            df_rel["Resultado"]
+                            .isna()
+                        ]
+
+                df_actual = pd.concat(
+                    [df_lsc, df_rel],
+                    ignore_index=True
+                )
+
+                df_actual = df_actual.drop_duplicates()
+
+            else:
 
                 r = session.get(
                     url_actual,
@@ -570,27 +447,26 @@ if st.session_state["logueado"]:
                     timeout=180
                 )
 
+                if r.status_code != 200:
+                    st.error("❌ Error servidor")
+                    st.stop()
+
                 if r.content[:2] != b"PK":
-                    st.warning("⚠️ 0 registros")
+                    st.warning("⚠️ Resultado vacío")
                     st.stop()
 
                 df_actual = pd.read_excel(
                     BytesIO(r.content)
                 )
 
-            # =================================================
-            # VALIDACIÓN BASE
-            # =================================================
-
-            if df_actual is None or df_actual.empty:
-
-                st.warning("⚠️ No hay registros.")
-                st.stop()
-
             st.success(
                 f"✅ Registros encontrados: "
                 f"{len(df_actual):,}"
             )
+
+            if len(df_actual) == 0:
+                st.warning("⚠️ Sin registros.")
+                st.stop()
 
             # =================================================
             # SUMINISTRO
@@ -601,14 +477,8 @@ if st.session_state["logueado"]:
             for c in df_actual.columns:
 
                 if "suministro" in str(c).lower():
-
                     col_suministro = c
                     break
-
-            if not col_suministro:
-
-                st.error("❌ No existe suministro")
-                st.stop()
 
             suministros = (
                 df_actual[col_suministro]
@@ -617,7 +487,7 @@ if st.session_state["logueado"]:
             )
 
             # =================================================
-            # DETECTAR RUTAS
+            # RUTAS
             # =================================================
 
             rutas_detectadas = []
@@ -629,7 +499,6 @@ if st.session_state["logueado"]:
                 for c in df_actual.columns:
 
                     if "ruta" in str(c).lower():
-
                         col_ruta = c
                         break
 
@@ -653,14 +522,13 @@ if st.session_state["logueado"]:
                             )
 
                             if codigo_ruta.isdigit():
-
                                 rutas_detectadas.append(
                                     codigo_ruta
                                 )
 
-                rutas_detectadas = list(
-                    set(rutas_detectadas)
-                )
+                    rutas_detectadas = list(
+                        set(rutas_detectadas)
+                    )
 
             elif modo == "POR RUTA":
 
@@ -674,77 +542,43 @@ if st.session_state["logueado"]:
 
             progress = st.progress(0)
 
-            if modo in ["POR RUTA", "POR LECTURISTA"]:
+            total_descargas = max(
+                len(periodos_seleccionados),
+                1
+            )
 
-                total_descargas = (
-                    len(rutas_detectadas)
-                    * len(periodos_seleccionados)
-                )
+            contador = 0
 
-                contador = 0
+            for periodo in periodos_seleccionados:
 
-                for ruta_hist in rutas_detectadas:
-
-                    for periodo in periodos_seleccionados:
-
-                        url_hist = (
-                            f"http://sigof.distriluz.com.pe/"
-                            f"plus/Reportes/ajax_ordenes_historico_xls/"
-                            f"U/{hoy}/{hoy}/0/0/0/"
-                            f"{ruta_hist}/0/0/0/0/0/0/9/{periodo}"
-                        )
-
-                        try:
-
-                            rh = session.get(
-                                url_hist,
-                                headers=HEADERS,
-                                timeout=180
-                            )
-
-                            if rh.content[:2] == b"PK":
-
-                                df_temp = pd.read_excel(
-                                    BytesIO(rh.content)
-                                )
-
-                                df_temp = df_temp[
-                                    df_temp[col_suministro]
-                                    .astype(str)
-                                    .isin(suministros)
-                                ]
-
-                                if not df_temp.empty:
-
-                                    df_temp["periodo_historico"] = periodo
-
-                                    dfs_hist.append(df_temp)
-
-                        except:
-                            pass
-
-                        contador += 1
-
-                        progress.progress(
-                            contador / total_descargas
-                        )
-
-            else:
-
-                total_descargas = len(
-                    periodos_seleccionados
-                )
-
-                contador = 0
-
-                for periodo in periodos_seleccionados:
+                if modo == "POR SUMINISTROS":
 
                     url_hist = (
                         f"http://sigof.distriluz.com.pe/"
                         f"plus/Reportes/ajax_ordenes_historico_xls/"
                         f"U,S/{hoy}/{hoy}/0/0/0/0/"
-                        f"{codigo}/0/0/0/0/0/9/{periodo}"
+                        f"{suministros_txt}/0/0/0/0/0/9/"
+                        f"{periodo}"
                     )
+
+                    rutas_iterar = [url_hist]
+
+                else:
+
+                    rutas_iterar = []
+
+                    for ruta_hist in rutas_detectadas:
+
+                        rutas_iterar.append(
+
+                            f"http://sigof.distriluz.com.pe/"
+                            f"plus/Reportes/ajax_ordenes_historico_xls/"
+                            f"U/{hoy}/{hoy}/0/0/0/"
+                            f"{ruta_hist}/0/0/0/0/0/0/9/"
+                            f"{periodo}"
+                        )
+
+                for url_hist in rutas_iterar:
 
                     try:
 
@@ -754,220 +588,255 @@ if st.session_state["logueado"]:
                             timeout=180
                         )
 
-                        if rh.content[:2] == b"PK":
+                        if rh.status_code != 200:
+                            continue
 
-                            df_temp = pd.read_excel(
-                                BytesIO(rh.content)
-                            )
+                        if rh.content[:2] != b"PK":
+                            continue
 
-                            df_temp = df_temp[
-                                df_temp[col_suministro]
-                                .astype(str)
-                                .isin(suministros)
-                            ]
+                        df_temp = pd.read_excel(
+                            BytesIO(rh.content)
+                        )
 
-                            if not df_temp.empty:
+                        df_temp = df_temp[
+                            df_temp[col_suministro]
+                            .astype(str)
+                            .isin(suministros)
+                        ]
 
-                                df_temp["periodo_historico"] = periodo
+                        if not df_temp.empty:
 
-                                dfs_hist.append(df_temp)
+                            df_temp["periodo_historico"] = periodo
+
+                            dfs_hist.append(df_temp)
 
                     except:
                         pass
 
-                    contador += 1
+                contador += 1
 
-                    progress.progress(
-                        contador / total_descargas
-                    )
+                progress.progress(
+                    contador / total_descargas
+                )
 
             # =================================================
-            # VALIDACIÓN HISTÓRICOS
+            # SI NO EXISTEN HISTÓRICOS
             # =================================================
 
             if not dfs_hist:
 
                 st.warning(
-                    "⚠️ No existen históricos."
+                    "⚠️ No existen históricos "
+                    "para los periodos seleccionados."
                 )
 
-                st.stop()
+                lat_actual = None
+                lon_actual = None
 
-            fusionado = pd.concat(
-                dfs_hist,
-                ignore_index=True
-            )
+                for c in df_actual.columns:
 
-            # =================================================
-            # COORDENADAS
-            # =================================================
+                    cl = str(c).lower()
 
-            lat_col = None
-            lon_col = None
+                    if "lat" in cl:
+                        lat_actual = c
 
-            for c in fusionado.columns:
+                    if "lon" in cl:
+                        lon_actual = c
 
-                cl = str(c).lower()
+                if lat_actual and lon_actual:
 
-                if "lat" in cl:
-                    lat_col = c
+                    df_actual["latitud_validada"] = (
+                        df_actual[lat_actual]
+                    )
 
-                if "lon" in cl:
-                    lon_col = c
+                    df_actual["longitud_validada"] = (
+                        df_actual[lon_actual]
+                    )
 
-            fusionado[lat_col] = pd.to_numeric(
-                fusionado[lat_col],
-                errors="coerce"
-            )
+                    df_actual["estado_gps"] = (
+                        "COORDENADA_ACTUAL"
+                    )
 
-            fusionado[lon_col] = pd.to_numeric(
-                fusionado[lon_col],
-                errors="coerce"
-            )
+                    df_actual["dispersion_m"] = 0
 
-            fusionado = fusionado[
-                (fusionado[lat_col] != 0)
-                &
-                (fusionado[lon_col] != 0)
-            ]
+                    df_actual["meses_historicos"] = 0
 
-            # =================================================
-            # ÚLTIMO PERIODO VÁLIDO
-            # =================================================
+                    df_actual["google_maps"] = (
+                        "https://www.google.com/maps?q="
+                        +
+                        df_actual["latitud_validada"].astype(str)
+                        +
+                        ","
+                        +
+                        df_actual["longitud_validada"].astype(str)
+                    )
 
-            fusionado = fusionado.sort_values(
-                "periodo_historico",
-                ascending=False
-            )
-
-            # =================================================
-            # CENTRO
-            # =================================================
-
-            centro_lat = fusionado[lat_col].median()
-            centro_lon = fusionado[lon_col].median()
-
-            # =================================================
-            # GIS
-            # =================================================
-
-            resultados = []
-
-            grupos = fusionado.groupby(
-                col_suministro
-            )
-
-            total_grupos = len(grupos)
-
-            progress_gis = st.progress(0)
-
-            for i, (suministro, grupo) in enumerate(grupos):
-
-                grupo = grupo.sort_values(
-                    "periodo_historico",
-                    ascending=False
-                )
-
-                puntos = grupo[
-                    [lat_col, lon_col]
-                ].values
-
-                meses = len(
-                    grupo["periodo_historico"]
-                    .unique()
-                )
-
-                # =============================================
-                # SOLO 1 REGISTRO
-                # =============================================
-
-                if len(puntos) == 1:
-
-                    lat_final = puntos[0][0]
-                    lon_final = puntos[0][1]
-
-                    estado_gps = "ULTIMO PERIODO"
-
-                    dispersion = 0
+                    df_final = df_actual.copy()
 
                 else:
 
-                    n = len(puntos)
+                    st.error(
+                        "❌ No existen coordenadas."
+                    )
 
-                    matriz = np.zeros((n, n))
+                    st.stop()
 
-                    for x in range(n):
+            else:
 
-                        for y in range(x + 1, n):
+                fusionado = pd.concat(
+                    dfs_hist,
+                    ignore_index=True
+                )
 
-                            d = haversine(
-                                puntos[x][0],
-                                puntos[x][1],
-                                puntos[y][0],
-                                puntos[y][1]
-                            )
+                lat_col = None
+                lon_col = None
 
-                            matriz[x, y] = d
-                            matriz[y, x] = d
+                for c in fusionado.columns:
 
-                    dispersion = matriz.max()
+                    cl = str(c).lower()
 
-                    if dispersion > 500:
+                    if "lat" in cl:
+                        lat_col = c
 
-                        idx = 0
+                    if "lon" in cl:
+                        lon_col = c
 
-                        estado_gps = "ULTIMO PERIODO"
+                fusionado[lat_col] = pd.to_numeric(
+                    fusionado[lat_col],
+                    errors="coerce"
+                )
+
+                fusionado[lon_col] = pd.to_numeric(
+                    fusionado[lon_col],
+                    errors="coerce"
+                )
+
+                fusionado = fusionado[
+                    (fusionado[lat_col] != 0)
+                    &
+                    (fusionado[lon_col] != 0)
+                ]
+
+                resultados = []
+
+                grupos = fusionado.groupby(
+                    col_suministro
+                )
+
+                ultimo_periodo = max(
+                    periodos_seleccionados
+                )
+
+                progress_gis = st.progress(0)
+
+                total_grupos = len(grupos)
+
+                for i, (suministro, grupo) in enumerate(grupos):
+
+                    grupo_reciente = grupo[
+                        grupo["periodo_historico"]
+                        == ultimo_periodo
+                    ]
+
+                    if not grupo_reciente.empty:
+
+                        punto = grupo_reciente.iloc[-1]
+
+                        lat_final = punto[lat_col]
+                        lon_final = punto[lon_col]
+
+                        estado_gps = "ULTIMO_PERIODO"
+
+                        dispersion = 0
+
+                        meses = 1
 
                     else:
 
-                        suma = matriz.sum(axis=1)
+                        puntos = grupo[
+                            [lat_col, lon_col]
+                        ].values
 
-                        idx = int(
-                            np.argmin(suma)
+                        meses = len(
+                            grupo["periodo_historico"]
+                            .unique()
                         )
 
-                        estado_gps = "VALIDADO"
+                        if len(puntos) == 1:
 
-                    lat_final = puntos[idx][0]
-                    lon_final = puntos[idx][1]
+                            lat_final = puntos[0][0]
+                            lon_final = puntos[0][1]
 
-                resultados.append({
+                            estado_gps = "UNICO"
 
-                    col_suministro: suministro,
+                            dispersion = 0
 
-                    "latitud_validada": lat_final,
+                        else:
 
-                    "longitud_validada": lon_final,
+                            n = len(puntos)
 
-                    "estado_gps": estado_gps,
+                            matriz = np.zeros((n, n))
 
-                    "dispersion_m": round(
-                        dispersion,
-                        2
-                    ),
+                            for x in range(n):
 
-                    "meses_historicos": meses,
+                                for y in range(x + 1, n):
 
-                    "google_maps":
-                    f"https://www.google.com/maps?q="
-                    f"{lat_final},{lon_final}"
-                })
+                                    d = haversine(
+                                        puntos[x][0],
+                                        puntos[x][1],
+                                        puntos[y][0],
+                                        puntos[y][1]
+                                    )
 
-                progress_gis.progress(
-                    (i + 1) / total_grupos
+                                    matriz[x, y] = d
+                                    matriz[y, x] = d
+
+                            dispersion = matriz.max()
+
+                            suma = matriz.sum(axis=1)
+
+                            idx = int(
+                                np.argmin(suma)
+                            )
+
+                            lat_final = puntos[idx][0]
+                            lon_final = puntos[idx][1]
+
+                            estado_gps = "VALIDADO"
+
+                    resultados.append({
+
+                        col_suministro: suministro,
+
+                        "latitud_validada": lat_final,
+
+                        "longitud_validada": lon_final,
+
+                        "estado_gps": estado_gps,
+
+                        "dispersion_m": round(
+                            dispersion,
+                            2
+                        ),
+
+                        "meses_historicos": meses,
+
+                        "google_maps":
+                        f"https://www.google.com/maps?q="
+                        f"{lat_final},{lon_final}"
+                    })
+
+                    progress_gis.progress(
+                        (i + 1) / total_grupos
+                    )
+
+                df_gps = pd.DataFrame(resultados)
+
+                df_final = df_actual.merge(
+                    df_gps,
+                    on=col_suministro,
+                    how="left"
                 )
-
-            # =================================================
-            # FINAL
-            # =================================================
-
-            df_gps = pd.DataFrame(resultados)
-
-            df_final = df_actual.merge(
-                df_gps,
-                on=col_suministro,
-                how="left"
-            )
 
             # =================================================
             # EXCEL
@@ -986,10 +855,13 @@ if st.session_state["logueado"]:
                     sheet_name="GIS"
                 )
 
-            st.session_state["excel_data"] = output.getvalue()
+            excel_data = output.getvalue()
 
-            st.session_state["nombre_excel"] = (
-                f"GIS_{modo}_{hoy}.xlsx"
+            st.download_button(
+                "📥 DESCARGAR EXCEL",
+                data=excel_data,
+                file_name="GIS_RESULTADO.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
             # =================================================
@@ -1003,6 +875,16 @@ if st.session_state["logueado"]:
                     "latitud_validada",
                     "longitud_validada"
                 ]
+            )
+
+            centro_lat = (
+                df_mapa["latitud_validada"]
+                .median()
+            )
+
+            centro_lon = (
+                df_mapa["longitud_validada"]
+                .median()
             )
 
             mapa = folium.Map(
@@ -1036,11 +918,11 @@ if st.session_state["logueado"]:
 
                 color_icono = "green"
 
-                if row["estado_gps"] == "ULTIMO PERIODO":
-                    color_icono = "blue"
-
-                elif row["estado_gps"] == "REBOTADO":
+                if row["estado_gps"] == "REBOTADO":
                     color_icono = "red"
+
+                elif row["estado_gps"] == "UNICO":
+                    color_icono = "blue"
 
                 popup_html = (
                     f"<b>Suministro:</b> "
@@ -1068,9 +950,10 @@ if st.session_state["logueado"]:
 
             folium.LayerControl().add_to(mapa)
 
-            st.session_state["mapa_html"] = (
-                mapa._repr_html_()
-            )
+            mapa_html = mapa._repr_html_()
+
+            st.session_state["mapa_html"] = mapa_html
+            st.session_state["df_final"] = df_final
 
         except Exception as e:
 
@@ -1078,27 +961,14 @@ if st.session_state["logueado"]:
                 f"Error general: {e}"
             )
 
-    # =====================================================
-    # MOSTRAR EXCEL
-    # =====================================================
+# =========================================================
+# MANTENER MAPA
+# =========================================================
 
-    if st.session_state["excel_data"]:
+if st.session_state["mapa_html"]:
 
-        st.download_button(
-            "📥 DESCARGAR EXCEL",
-            data=st.session_state["excel_data"],
-            file_name=st.session_state["nombre_excel"],
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-    # =====================================================
-    # MOSTRAR MAPA
-    # =====================================================
-
-    if st.session_state["mapa_html"]:
-
-        components.html(
-            st.session_state["mapa_html"],
-            height=850,
-            scrolling=True
-        )
+    components.html(
+        st.session_state["mapa_html"],
+        height=850,
+        scrolling=True
+    )
