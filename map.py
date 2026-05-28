@@ -112,7 +112,7 @@ if not st.session_state["logueado"]:
             st.error(str(e))
 
 # =========================================================
-# PANEL
+# PANEL DE CONTROL
 # =========================================================
 
 if st.session_state["logueado"]:
@@ -128,9 +128,7 @@ if st.session_state["logueado"]:
         ]
     )
 
-    # =====================================================
-    # FILTRO DE ESTADO (Para Ruta y Lecturista)
-    # =====================================================
+    # Elige los 3 estados tanto para RUTA como para LECTURISTA
     tipo_filtro = "TODOS"
     if modo in ["POR RUTA", "POR LECTURISTA"]:
         tipo_filtro = st.radio(
@@ -142,18 +140,14 @@ if st.session_state["logueado"]:
             ]
         )
 
-    # =====================================================
-    # POR RUTA
-    # =====================================================
+    # Modo Ruta
     if modo == "POR RUTA":
         codigo = st.text_input(
             "Código ruta",
             placeholder="Ejemplo: 68724"
         )
 
-    # =====================================================
-    # POR LECTURISTA
-    # =====================================================
+    # Modo Lecturista
     elif modo == "POR LECTURISTA":
         try:
             url_lect = (
@@ -193,9 +187,7 @@ if st.session_state["logueado"]:
             st.error(f"Error lecturistas: {e}")
             st.stop()
 
-    # =====================================================
-    # POR SUMINISTROS
-    # =====================================================
+    # Modo Manual/Excel
     else:
         suministros_manual = st.text_area(
             "Ingrese suministros separados por coma",
@@ -207,7 +199,7 @@ if st.session_state["logueado"]:
         )
 
     # =====================================================
-    # PERIODOS
+    # PERIODOS HISTÓRICOS
     # =====================================================
     actual = datetime.now()
     mes_1 = (actual - relativedelta(months=1)).strftime("%Y%m")
@@ -240,15 +232,13 @@ if st.session_state["logueado"]:
     )
 
     # =====================================================
-    # PROCESAR
+    # ACCIÓN: PROCESAR GIS
     # =====================================================
     if st.button("🛰️ PROCESAR GIS"):
         try:
             hoy = datetime.now().strftime("%Y-%m-%d")
 
-            # =================================================
-            # CONFIGURACIÓN URL SEGÚN EL MODO Y FILTRO
-            # =================================================
+            # Construcción de URLs según selección
             if modo == "POR RUTA":
                 if tipo_filtro == "PENDIENTES":
                     url_actual = (
@@ -264,7 +254,7 @@ if st.session_state["logueado"]:
                         f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
                         f"U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/REL/0/9/0"
                     )
-                else:  # TODOS
+                else:
                     url_actual = (
                         f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
                         f"U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/0"
@@ -285,7 +275,7 @@ if st.session_state["logueado"]:
                         f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
                         f"U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/REL/0/9/0"
                     )
-                else:  # TODOS
+                else:
                     url_actual = (
                         f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
                         f"U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/0"
@@ -302,7 +292,7 @@ if st.session_state["logueado"]:
                 
                 lista_sum = list(set(lista_sum))
                 if not lista_sum:
-                    st.error("❌ No hay suministros")
+                    st.error("❌ No hay suministros válidos")
                     st.stop()
 
                 texto_sum = ",".join(lista_sum)
@@ -311,9 +301,7 @@ if st.session_state["logueado"]:
                     f"U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/0"
                 )
 
-            # =================================================
-            # DESCARGA Y FILTRADO BASE
-            # =================================================
+            # Descarga de la base de datos actual
             with st.spinner("📥 Descargando base..."):
                 if modo in ["POR RUTA", "POR LECTURISTA"] and tipo_filtro == "PENDIENTES + RELECTURAS":
                     r1 = session.get(url_pend, headers=HEADERS, timeout=180)
@@ -326,30 +314,34 @@ if st.session_state["logueado"]:
                         dfs_union.append(pd.read_excel(BytesIO(r2.content)))
 
                     if not dfs_union:
-                        st.warning("⚠️ Sin pendientes ni relecturas")
+                        st.warning("⚠️ Sin pendientes ni relecturas disponibles en este momento.")
                         st.stop()
 
                     df_actual = pd.concat(dfs_union, ignore_index=True)
 
-                    # CRÍTICO: Filtrar celdas vacías en la columna 'Resultado'
+                    # =================================================
+                    # DETALLE SOLICITADO: FILTRO COLUMNA 'Resultado'
+                    # =================================================
                     if "Resultado" in df_actual.columns:
-                        df_actual = df_actual[df_actual["Resultado"].isna()]
+                        # Considera nulos reales (NaN) y textos vacíos o con puros espacios
+                        df_actual = df_actual[
+                            df_actual["Resultado"].isna() | 
+                            (df_actual["Resultado"].astype(str).str.strip() == "")
+                        ]
                 else:
                     r = session.get(url_actual, headers=HEADERS, timeout=180)
                     if r.content[:2] != b"PK":
-                        st.warning("⚠️ Sin registros")
+                        st.warning("⚠️ Sin registros en el periodo actual.")
                         st.stop()
                     df_actual = pd.read_excel(BytesIO(r.content))
 
             if df_actual.empty:
-                st.warning("⚠️ No existen registros tras aplicar los filtros")
+                st.warning("⚠️ No quedan registros tras aplicar la limpieza de celdas vacías en 'Resultado'.")
                 st.stop()
 
-            st.success(f"✅ Registros encontrados: {len(df_actual):,}")
+            st.success(f"✅ Registros base cargados: {len(df_actual):,}")
 
-            # =================================================
-            # IDENTIFICACIÓN DE COLUMNA SUMINISTRO
-            # =================================================
+            # Localizar columna de Suministro
             col_suministro = None
             for c in df_actual.columns:
                 if "suministro" in str(c).lower():
@@ -357,21 +349,21 @@ if st.session_state["logueado"]:
                     break
 
             if not col_suministro:
-                st.error("❌ No existe columna de suministro")
+                st.error("❌ No se encontró la columna de suministro en el archivo.")
                 st.stop()
 
             suministros = df_actual[col_suministro].astype(str).unique()
 
             # =================================================
-            # HISTÓRICOS Y SELECCIÓN DE ESTRATEGIA (LOG VISUAL)
+            # DECISIÓN E INFORME VISUAL DE LA ESTRATEGIA HISTÓRICA
             # =================================================
             dfs_hist = []
             usar_por_suministro = (len(suministros) <= 100)
             progress = st.progress(0)
 
-            # Restaurada la información del método de descarga seleccionado
             if usar_por_suministro:
-                st.info(f"🔍 Método de descarga: **HISTÓRICO POR SUMINISTRO** ({len(suministros)} elementos)")
+                # Alerta visual explícita en pantalla
+                st.info(f"🔍 Estrategia activa: **HISTÓRICO POR SUMINISTRO** ({len(suministros)} elementos)")
                 texto_sum = ",".join(suministros)
                 total = len(periodos_seleccionados)
 
@@ -405,7 +397,8 @@ if st.session_state["logueado"]:
                 elif modo == "POR RUTA":
                     rutas_detectadas = [codigo]
 
-                st.info(f"🔍 Método de descarga: **HISTÓRICO POR RUTA** ({len(rutas_detectadas)} rutas mapeadas)")
+                # Alerta visual explícita en pantalla
+                st.info(f"🔍 Estrategia activa: **HISTÓRICO POR RUTA** ({len(rutas_detectadas)} rutas mapeadas)")
                 total = len(rutas_detectadas) * len(periodos_seleccionados)
                 contador = 0
 
@@ -429,14 +422,12 @@ if st.session_state["logueado"]:
                         progress.progress(contador / total)
 
             if not dfs_hist:
-                st.warning("⚠️ Sin históricos correlacionados encontrados.")
+                st.warning("⚠️ No se encontraron registros históricos en los periodos seleccionados.")
                 st.stop()
 
             fusionado = pd.concat(dfs_hist, ignore_index=True)
 
-            # =================================================
-            # PROCESAMIENTO GEOSPATIAL (COORDENADAS)
-            # =================================================
+            # Extraer y limpiar georreferenciación histórica
             lat_col, lon_col = None, None
             for c in fusionado.columns:
                 cl = str(c).lower()
@@ -448,9 +439,7 @@ if st.session_state["logueado"]:
             fusionado = fusionado.dropna(subset=[lat_col, lon_col])
             fusionado = fusionado[(fusionado[lat_col] != 0) & (fusionado[lon_col] != 0)]
 
-            # =================================================
-            # ALGORITMO GIS MÍNIMA DISPERSIÓN
-            # =================================================
+            # Algoritmo de mínima dispersión (Haversine)
             resultados = []
             grupos = fusionado.groupby(col_suministro)
             progress_gis = st.progress(0)
@@ -489,9 +478,7 @@ if st.session_state["logueado"]:
                 })
                 progress_gis.progress((i + 1) / total_grupos)
 
-            # =================================================
-            # MERGE FINAL Y SALIDAS
-            # =================================================
+            # Consolidación final y descarga
             df_gps = pd.DataFrame(resultados)
             df_final = df_actual.merge(df_gps, on=col_suministro, how="left")
 
@@ -507,14 +494,12 @@ if st.session_state["logueado"]:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            # =================================================
-            # MAPA INTERACTIVO
-            # =================================================
+            # Renderizado de Mapas
             st.subheader("🗺️ MAPA GIS")
             df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
 
             if df_mapa.empty:
-                st.warning("⚠️ No existen coordenadas válidas para generar el mapa.")
+                st.warning("⚠️ No quedan coordenadas mapeables tras los procesos de validación.")
                 st.stop()
 
             centro_lat = df_mapa["latitud_validada"].median()
@@ -523,11 +508,11 @@ if st.session_state["logueado"]:
             mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=13, tiles=None)
             plugins.Fullscreen().add_to(mapa)
 
-            folium.TileLayer("OpenStreetMap", name="Mapa").add_to(mapa)
+            folium.TileLayer("OpenStreetMap", name="Mapa Base").add_to(mapa)
             folium.TileLayer(
                 tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
                 attr="Google",
-                name="Satélite"
+                name="Vista Satélite"
             ).add_to(mapa)
 
             cluster = MarkerCluster(disableClusteringAtZoom=12, showCoverageOnHover=False).add_to(mapa)
@@ -537,7 +522,7 @@ if st.session_state["logueado"]:
                     f"<b>Suministro:</b> {row[col_suministro]}<br>"
                     f"<b>Estado:</b> {row['estado_gps']}<br>"
                     f"<b>Dispersión:</b> {row['dispersion_m']} m<br>"
-                    f"<a href='{row['google_maps']}' target='_blank'>🌍 Maps</a>"
+                    f"<a href='{row['google_maps']}' target='_blank'>🌍 Abrir en Google Maps</a>"
                 )
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
@@ -548,4 +533,4 @@ if st.session_state["logueado"]:
             components.html(mapa._repr_html_(), height=850, scrolling=True)
 
         except Exception as e:
-            st.error(f"Error general: {e}")
+            st.error(f"Error general en el hilo de ejecución: {e}")
