@@ -319,15 +319,23 @@ if st.session_state["logueado"]:
 
                     df_actual = pd.concat(dfs_union, ignore_index=True)
 
-                    # =================================================
-                    # DETALLE SOLICITADO: FILTRO COLUMNA 'Resultado'
-                    # =================================================
-                    if "Resultado" in df_actual.columns:
-                        # Considera nulos reales (NaN) y textos vacíos o con puros espacios
+                    # =========================================================
+                    # CAMBIO AQUÍ: Buscar 'resultado' o 'Resultado' de forma segura
+                    # =========================================================
+                    col_resultado = None
+                    for col in df_actual.columns:
+                        if str(col).lower() == "resultado":
+                            col_resultado = col
+                            break
+
+                    if col_resultado:
+                        # Filtra dejando SOLO las celdas vacías, NaN o con espacios
                         df_actual = df_actual[
-                            df_actual["Resultado"].isna() | 
-                            (df_actual["Resultado"].astype(str).str.strip() == "")
+                            df_actual[col_resultado].isna() | 
+                            (df_actual[col_resultado].astype(str).str.strip() == "")
                         ]
+                    # =========================================================
+
                 else:
                     r = session.get(url_actual, headers=HEADERS, timeout=180)
                     if r.content[:2] != b"PK":
