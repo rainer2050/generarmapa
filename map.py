@@ -1,4 +1,4 @@
-```python
+
 import streamlit as st
 import requests
 import pandas as pd
@@ -1064,4 +1064,4 @@ if st.session_state["logueado"]:
             height=850,
             scrolling=True
         )
-```
+
