@@ -207,258 +207,49 @@ if st.session_state["logueado"]:
             st.error(f"Error lecturistas: {e}")
             st.stop()
 
-  import streamlit as st
-import requests
-import pandas as pd
-import numpy as np
-import folium
-import streamlit.components.v1 as components
+    # =====================================================
+    # PERIODOS
+    # =====================================================
 
-from folium import plugins
-from folium.plugins import MarkerCluster
+    actual = datetime.now()
 
-from bs4 import BeautifulSoup
-from io import BytesIO
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
-from math import radians, sin, cos, sqrt, atan2
+    mes_1 = (
+        actual - relativedelta(months=1)
+    ).strftime("%Y%m")
 
-# =========================================================
-# CONFIGURACIÓN
-# =========================================================
+    mes_2 = (
+        actual - relativedelta(months=2)
+    ).strftime("%Y%m")
 
-st.set_page_config(
-    page_title="SIGOF GIS AVANZADO",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+    default_periodos = list(dict.fromkeys([
+        "202409",
+        "202410",
+        "202508",
+        "202509",
+        mes_1,
+        mes_2
+    ]))
 
-LOGIN_URL = "http://sigof.distriluz.com.pe/plus/usuario/login"
+    periodos = []
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Referer": LOGIN_URL,
-}
+    anio = actual.year
+    mes = actual.month
 
-st.title("🛰️ SIGOF GIS AVANZADO")
+    while anio > 2024 or (anio == 2024 and mes >= 9):
 
-# =========================================================
-# SESSION STATE
-# =========================================================
+        periodos.append(f"{anio}{mes:02d}")
 
-if "logueado" not in st.session_state:
-    st.session_state["logueado"] = False
+        mes -= 1
 
-# =========================================================
-# FUNCIÓN HAVERSINE
-# =========================================================
+        if mes == 0:
+            mes = 12
+            anio -= 1
 
-def haversine(lat1, lon1, lat2, lon2):
-
-    R = 6371000
-
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
-
-    a = (
-        sin(dlat / 2) ** 2
-        + cos(radians(lat1))
-        * cos(radians(lat2))
-        * sin(dlon / 2) ** 2
+    periodos_seleccionados = st.multiselect(
+        "Históricos",
+        periodos,
+        default=default_periodos
     )
-
-    return 2 * R * atan2(sqrt(a), sqrt(1 - a))
-
-# =========================================================
-# LOGIN
-# =========================================================
-
-if not st.session_state["logueado"]:
-
-    usuario = st.text_input("Usuario SIGOF")
-    password = st.text_input("Contraseña", type="password")
-
-    if st.button("INICIAR SESIÓN"):
-
-        try:
-
-            session = requests.Session()
-
-            login_page = session.get(
-                LOGIN_URL,
-                headers=HEADERS,
-                timeout=60
-            )
-
-            soup = BeautifulSoup(
-                login_page.text,
-                "html.parser"
-            )
-
-            csrf = soup.find(
-                "input",
-                {"name": "_csrf_token"}
-            )
-
-            credentials = {
-                "data[Usuario][usuario]": usuario,
-                "data[Usuario][pass]": password
-            }
-
-            if csrf:
-                credentials["_csrf_token"] = csrf["value"]
-
-            r = session.post(
-                LOGIN_URL,
-                data=credentials,
-                headers=HEADERS,
-                timeout=60
-            )
-
-            if "Salir" not in r.text:
-                st.error("❌ Usuario o contraseña incorrectos")
-                st.stop()
-
-            st.success("✅ Sesión iniciada correctamente")
-
-            st.session_state["session"] = session
-            st.session_state["logueado"] = True
-
-            st.rerun()
-
-        except Exception as e:
-            st.error(str(e))
-
-# =========================================================
-# PANEL PRINCIPAL
-# =========================================================
-
-if st.session_state["logueado"]:
-
-    session = st.session_state["session"]
-
-    st.subheader("⚙️ CONFIGURACIÓN GIS")
-
-    modo = st.radio(
-        "Modo trabajo",
-        ["POR RUTA", "POR LECTURISTA"]
-    )
-
-    tipo_mapa = st.radio(
-        "Tipo",
-        ["TOTAL", "PENDIENTES"]
-    )
-
-    # =====================================================
-    # POR RUTA
-    # =====================================================
-
-    if modo == "POR RUTA":
-
-        codigo = st.text_input(
-            "Código ruta",
-            placeholder="Ejemplo: 46516"
-        )
-
-    # =====================================================
-    # POR LECTURISTA
-    # =====================================================
-
-    else:
-
-        try:
-
-            url_lect = (
-                "http://sigof.distriluz.com.pe/"
-                "plus/ValidaImei/listarusuario"
-            )
-
-            r_lect = session.get(
-                url_lect,
-                headers=HEADERS,
-                timeout=120
-            )
-
-            usuarios = r_lect.json()
-
-            lecturistas = []
-
-            for u in usuarios:
-
-                if not u.get("Roles"):
-                    continue
-
-                for rol in u["Roles"]:
-
-                    if rol.get("nombre") == "Lecturista":
-
-                        lecturistas.append({
-                            "nombre": u["NombreUsuario"],
-                            "id": str(u["IdProveedorPersonal"])
-                        })
-
-                        break
-
-            dict_lect = {
-                x["nombre"]: x["id"]
-                for x in lecturistas
-            }
-
-            nombre_lect = st.selectbox(
-                "Seleccione Lecturista",
-                sorted(dict_lect.keys())
-            )
-
-            codigo = dict_lect[nombre_lect]
-
-        except Exception as e:
-
-            st.error(f"Error lecturistas: {e}")
-            st.stop()
-
-  # =====================================================
-# PERIODOS
-# =====================================================
-
-        actual = datetime.now()
-
-        mes_1 = (
-            actual - relativedelta(months=1)
-        ).strftime("%Y%m")
-
-        mes_2 = (
-            actual - relativedelta(months=2)
-        ).strftime("%Y%m")
-
-        default_periodos = list(dict.fromkeys([
-            "202409",
-            "202410",
-            "202508",
-            "202509",
-            mes_1,
-            mes_2
-        ]))
-
-        periodos = []
-
-        anio = actual.year
-        mes = actual.month
-
-        while anio > 2024 or (anio == 2024 and mes >= 9):
-
-            periodos.append(f"{anio}{mes:02d}")
-
-            mes -= 1
-
-            if mes == 0:
-                mes = 12
-                anio -= 1
-
-        periodos_seleccionados = st.multiselect(
-            "Históricos",
-            periodos,
-            default=default_periodos
-        )
 
     # =====================================================
     # PROCESAR GIS
@@ -530,13 +321,40 @@ if st.session_state["logueado"]:
                 st.error("❌ Error servidor")
                 st.stop()
 
+            # =================================================
+            # VALIDAR ARCHIVO
+            # =================================================
+
             if r.content[:2] != b"PK":
-                st.error("❌ Archivo inválido")
-                st.stop()
+
+                if tipo_mapa == "PENDIENTES":
+
+                    st.warning(
+                        "⚠️ No existen pendientes para los parámetros seleccionados."
+                    )
+
+                    st.stop()
+
+                else:
+
+                    st.error("❌ Archivo inválido")
+                    st.stop()
 
             df_actual = pd.read_excel(
                 BytesIO(r.content)
             )
+
+            # =================================================
+            # VALIDAR REGISTROS
+            # =================================================
+
+            if df_actual.empty:
+
+                st.warning(
+                    "⚠️ La descarga no contiene registros."
+                )
+
+                st.stop()
 
             st.success(
                 f"✅ Registros encontrados: {len(df_actual):,}"
@@ -606,8 +424,8 @@ if st.session_state["logueado"]:
                                     codigo_ruta
                                 )
 
-                    rutas_detectadas = list(
-                        set(rutas_detectadas)
+                    rutas_detectadas = sorted(
+                        list(set(rutas_detectadas))
                     )
 
                     st.success(
@@ -703,7 +521,7 @@ if st.session_state["logueado"]:
                     )
 
             # =================================================
-            # VALIDACIÓN
+            # VALIDACIÓN HISTÓRICOS
             # =================================================
 
             if not dfs_hist:
@@ -741,6 +559,14 @@ if st.session_state["logueado"]:
                 if "lon" in cl:
                     lon_col = c
 
+            if not lat_col or not lon_col:
+
+                st.error(
+                    "❌ No existen columnas GPS"
+                )
+
+                st.stop()
+
             fusionado[lat_col] = pd.to_numeric(
                 fusionado[lat_col],
                 errors="coerce"
@@ -756,6 +582,14 @@ if st.session_state["logueado"]:
                 &
                 (fusionado[lon_col] != 0)
             ]
+
+            if fusionado.empty:
+
+                st.error(
+                    "❌ No existen coordenadas válidas"
+                )
+
+                st.stop()
 
             centro_lat = fusionado[lat_col].median()
             centro_lon = fusionado[lon_col].median()
@@ -776,6 +610,10 @@ if st.session_state["logueado"]:
 
             for i, (suministro, grupo) in enumerate(grupos):
 
+                grupo = grupo.sort_values(
+                    "periodo_historico"
+                )
+
                 puntos = grupo[
                     [lat_col, lon_col]
                 ].values
@@ -785,7 +623,25 @@ if st.session_state["logueado"]:
                     .unique()
                 )
 
-                if len(puntos) == 1:
+                # =================================================
+                # SOLO UN PERIODO
+                # =================================================
+
+                if meses == 1:
+
+                    ultimo = grupo.iloc[-1]
+
+                    lat_final = ultimo[lat_col]
+                    lon_final = ultimo[lon_col]
+
+                    estado_gps = "ULTIMO PERIODO"
+                    dispersion = 0
+
+                # =================================================
+                # SOLO UN PUNTO
+                # =================================================
+
+                elif len(puntos) == 1:
 
                     lat_final = puntos[0][0]
                     lon_final = puntos[0][1]
@@ -959,7 +815,10 @@ if st.session_state["logueado"]:
                 if row["estado_gps"] == "REBOTADO":
                     color_icono = "red"
 
-                elif row["estado_gps"] == "UNICO":
+                elif row["estado_gps"] in [
+                    "UNICO",
+                    "ULTIMO PERIODO"
+                ]:
                     color_icono = "blue"
 
                 popup_html = (
