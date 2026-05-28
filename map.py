@@ -28,6 +28,16 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+ocultar_elementos_st = """
+    <style>
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stAppDeployButton {display: none !important;}
+    </style>
+    """
+st.markdown(ocultar_elementos_st, unsafe_allow_html=True)
+
 LOGIN_URL = "http://sigof.distriluz.com.pe/plus/usuario/login"
 
 HEADERS = {
@@ -38,11 +48,55 @@ HEADERS = {
 st.title("🛰️ SIGOF GIS AVANZADO")
 
 # =========================================================
-# SESSION
+# FUNCIÓN CONTROLADA DE LOGIN
 # =========================================================
 
-if "logueado" not in st.session_state:
-    st.session_state["logueado"] = False
+def ejecutar_login_sigof(usr, psw):
+    """Ejecuta el inicio de sesión único y devuelve el objeto session."""
+    try:
+        session = requests.Session()
+        login_page = session.get(LOGIN_URL, headers=HEADERS, timeout=60)
+        soup = BeautifulSoup(login_page.text, "html.parser")
+        csrf = soup.find("input", {"name": "_csrf_token"})
+        credentials = {
+            "data[Usuario][usuario]": usr,
+            "data[Usuario][pass]": psw
+        }
+        if csrf:
+            credentials["_csrf_token"] = csrf["value"]
+
+        r = session.post(LOGIN_URL, data=credentials, headers=HEADERS, timeout=60)
+        if "Salir" in r.text:
+            return session
+        return None
+    except:
+        return None
+
+# =========================================================
+# FUNCIÓN OPTIMIZADA DE DESCARGA (EVITA RE-LOGINS INNECESARIOS)
+# =========================================================
+
+def descargar_excel_seguro(url):
+    """Descarga el Excel de forma segura. Si la sesión expiró, re-loguea UNA sola vez."""
+    session = st.session_state["session"]
+    try:
+        r = session.get(url, headers=HEADERS, timeout=180)
+        if r.content[:2] == b"PK": # Es un formato Excel válido (.xlsx comprimido)
+            return r.content
+    except:
+        pass
+    
+    # Si llegó aquí, la sesión expiró o falló. Intentamos reconexión express UNA sola vez.
+    nueva_sesion = ejecutar_login_sigof(st.session_state["usr_backdoor"], st.session_state["psw_backdoor"])
+    if nueva_sesion:
+        st.session_state["session"] = nueva_sesion  # Actualizamos la sesión global de la app
+        try:
+            r = nueva_sesion.get(url, headers=HEADERS, timeout=180)
+            if r.content[:2] == b"PK":
+                return r.content
+        except:
+            pass
+    return None
 
 # =========================================================
 # HAVERSINE
@@ -61,58 +115,42 @@ def haversine(lat1, lon1, lat2, lon2):
     return 2 * R * atan2(sqrt(a), sqrt(1 - a))
 
 # =========================================================
-# LOGIN
+# CONTROL DE SESIÓN GENERAL
+# =========================================================
+
+if "logueado" not in st.session_state:
+    st.session_state["logueado"] = False
+
+# =========================================================
+# INTERFAZ DE LOGIN
 # =========================================================
 
 if not st.session_state["logueado"]:
-    usuario = st.text_input("Usuario SIGOF")
-    password = st.text_input("Contraseña", type="password")
+    st.subheader("🔐 ACCESO SISTEMA SIGOF")
+    
+    # 💡 Consejo: Puedes escribir tus credenciales directamente en value="" para no teclearlas siempre
+    usuario = st.text_input("Usuario SIGOF", value="", key="storage_user")
+    password = st.text_input("Contraseña", type="password", value="", key="storage_pass")
 
     if st.button("INICIAR SESIÓN"):
-        try:
-            session = requests.Session()
-            login_page = session.get(
-                LOGIN_URL,
-                headers=HEADERS,
-                timeout=60
-            )
-            soup = BeautifulSoup(
-                login_page.text,
-                "html.parser"
-            )
-            csrf = soup.find(
-                "input",
-                {"name": "_csrf_token"}
-            )
-            credentials = {
-                "data[Usuario][usuario]": usuario,
-                "data[Usuario][pass]": password
-            }
-
-            if csrf:
-                credentials["_csrf_token"] = csrf["value"]
-
-            r = session.post(
-                LOGIN_URL,
-                data=credentials,
-                headers=HEADERS,
-                timeout=60
-            )
-
-            if "Salir" not in r.text:
-                st.error("❌ Usuario o contraseña incorrectos")
-                st.stop()
-
-            st.success("✅ Sesión iniciada correctamente")
-            st.session_state["session"] = session
-            st.session_state["logueado"] = True
-            st.rerun()
-
-        except Exception as e:
-            st.error(str(e))
+        if usuario and password:
+            with st.spinner("Conectando de forma segura con SIGOF..."):
+                sesion_valida = ejecutar_login_sigof(usuario, password)
+                
+                if sesion_valida:
+                    st.success("✅ Sesión iniciada correctamente")
+                    st.session_state["session"] = sesion_valida
+                    st.session_state["logueado"] = True
+                    st.session_state["usr_backdoor"] = usuario
+                    st.session_state["psw_backdoor"] = password
+                    st.rerun()
+                else:
+                    st.error("❌ Usuario o contraseña incorrectos o error del servidor SIGOF.")
+        else:
+            st.warning("⚠️ Por favor rellene ambos campos para continuar.")
 
 # =========================================================
-# PANEL DE CONTROL
+# PANEL DE CONTROL PRINCIPAL
 # =========================================================
 
 if st.session_state["logueado"]:
@@ -121,44 +159,31 @@ if st.session_state["logueado"]:
 
     modo = st.radio(
         "Modo trabajo",
-        [
-            "POR RUTA",
-            "POR LECTURISTA",
-            "POR SUMINISTROS"
-        ]
+        ["POR RUTA", "POR LECTURISTA", "POR SUMINISTROS"]
     )
 
-    # Elige los 3 estados tanto para RUTA como para LECTURISTA
     tipo_filtro = "TODOS"
     if modo in ["POR RUTA", "POR LECTURISTA"]:
         tipo_filtro = st.radio(
             "Filtro de Estado",
-            [
-                "TODOS",
-                "PENDIENTES",
-                "PENDIENTES + RELECTURAS"
-            ]
+            ["TODOS", "PENDIENTES", "PENDIENTES + RELECTURAS"]
         )
 
-    # Modo Ruta
     if modo == "POR RUTA":
-        codigo = st.text_input(
-            "Código ruta",
-            placeholder="Ejemplo: 68724"
-        )
+        codigo = st.text_input("Código ruta", placeholder="Ejemplo: 68724")
 
-    # Modo Lecturista
     elif modo == "POR LECTURISTA":
         try:
-            url_lect = (
-                "http://sigof.distriluz.com.pe/"
-                "plus/ValidaImei/listarusuario"
-            )
-            r_lect = session.get(
-                url_lect,
-                headers=HEADERS,
-                timeout=120
-            )
+            url_lect = "http://sigof.distriluz.com.pe/plus/ValidaImei/listarusuario"
+            r_lect = session.get(url_lect, headers=HEADERS, timeout=120)
+            
+            if r_lect.status_code != 200 or not isinstance(r_lect.json(), list):
+                nueva_s = ejecutar_login_sigof(st.session_state["usr_backdoor"], st.session_state["psw_backdoor"])
+                if nueva_s:
+                    st.session_state["session"] = nueva_s
+                    session = nueva_s
+                    r_lect = session.get(url_lect, headers=HEADERS, timeout=120)
+
             usuarios = r_lect.json()
             lecturistas = []
 
@@ -173,30 +198,17 @@ if st.session_state["logueado"]:
                         })
                         break
 
-            dict_lect = {
-                x["nombre"]: x["id"]
-                for x in lecturistas
-            }
-            nombre_lect = st.selectbox(
-                "Seleccione Lecturista",
-                sorted(dict_lect.keys())
-            )
+            dict_lect = {x["nombre"]: x["id"] for x in lecturistas}
+            nombre_lect = st.selectbox("Seleccione Lecturista", sorted(dict_lect.keys()))
             codigo = dict_lect[nombre_lect]
 
         except Exception as e:
-            st.error(f"Error lecturistas: {e}")
+            st.error(f"Error al traer lecturistas: {e}. Reintente presionando la pantalla.")
             st.stop()
 
-    # Modo Manual/Excel
     else:
-        suministros_manual = st.text_area(
-            "Ingrese suministros separados por coma",
-            height=120
-        )
-        archivo_excel = st.file_uploader(
-            "O cargar Excel",
-            type=["xlsx"]
-        )
+        suministros_manual = st.text_area("Ingrese suministros separados por coma", height=120)
+        archivo_excel = st.file_uploader("O cargar Excel", type=["xlsx"])
 
     # =====================================================
     # PERIODOS HISTÓRICOS
@@ -205,15 +217,7 @@ if st.session_state["logueado"]:
     mes_1 = (actual - relativedelta(months=1)).strftime("%Y%m")
     mes_2 = (actual - relativedelta(months=2)).strftime("%Y%m")
 
-    default_periodos = list(dict.fromkeys([
-        "202409",
-        "202410",
-        "202508",
-        "202509",
-        mes_1,
-        mes_2
-    ]))
-
+    default_periodos = list(dict.fromkeys(["202409", "202410", "202508", "202509", mes_1, mes_2]))
     periodos = []
     anio = actual.year
     mes = actual.month
@@ -225,67 +229,36 @@ if st.session_state["logueado"]:
             mes = 12
             anio -= 1
 
-    periodos_seleccionados = st.multiselect(
-        "Históricos",
-        periodos,
-        default=default_periodos
-    )
+    periodos_seleccionados = st.multiselect("Históricos", periodos, default=default_periodos)
 
     # =====================================================
-    # ACCIÓN: PROCESAR GIS
+    # PROCESAR ACCIÓN GIS
     # =====================================================
     if st.button("🛰️ PROCESAR GIS"):
         try:
             hoy = datetime.now().strftime("%Y-%m-%d")
 
-            # Construcción de URLs según selección
             if modo == "POR RUTA":
                 if tipo_filtro == "PENDIENTES":
-                    url_actual = (
-                        f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/0"
-                    )
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/0"
                 elif tipo_filtro == "PENDIENTES + RELECTURAS":
-                    url_pend = (
-                        f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/0"
-                    )
-                    url_rel = (
-                        f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/REL/0/9/0"
-                    )
+                    url_pend = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/0"
+                    url_rel = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/REL/0/9/0"
                 else:
-                    url_actual = (
-                        f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/0"
-                    )
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/0"
 
             elif modo == "POR LECTURISTA":
                 if tipo_filtro == "PENDIENTES":
-                    url_actual = (
-                        f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/0"
-                    )
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/0"
                 elif tipo_filtro == "PENDIENTES + RELECTURAS":
-                    url_pend = (
-                        f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/0"
-                    )
-                    url_rel = (
-                        f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/REL/0/9/0"
-                    )
+                    url_pend = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/0"
+                    url_rel = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/REL/0/9/0"
                 else:
-                    url_actual = (
-                        f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/0"
-                    )
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/0"
             else:
                 lista_sum = []
                 if suministros_manual.strip():
-                    lista_sum.extend([
-                        x.strip() for x in suministros_manual.split(",") if x.strip()
-                    ])
+                    lista_sum.extend([x.strip() for x in suministros_manual.split(",") if x.strip()])
                 if archivo_excel:
                     df_excel = pd.read_excel(archivo_excel)
                     lista_sum.extend(df_excel.iloc[:, 0].astype(str).tolist())
@@ -296,32 +269,27 @@ if st.session_state["logueado"]:
                     st.stop()
 
                 texto_sum = ",".join(lista_sum)
-                url_actual = (
-                    f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                    f"U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/0"
-                )
+                url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/0"
 
-            # Descarga de la base de datos actual
+            # =================================================
+            # EJECUCIÓN DE DESCARGAS USANDO LA FUNCIÓN OPTIMIZADA
+            # =================================================
             with st.spinner("📥 Descargando base..."):
                 if modo in ["POR RUTA", "POR LECTURISTA"] and tipo_filtro == "PENDIENTES + RELECTURAS":
-                    r1 = session.get(url_pend, headers=HEADERS, timeout=180)
-                    r2 = session.get(url_rel, headers=HEADERS, timeout=180)
+                    bin_pend = descargar_excel_seguro(url_pend)
+                    bin_rel = descargar_excel_seguro(url_rel)
 
                     dfs_union = []
-                    if r1.content[:2] == b"PK":
-                        dfs_union.append(pd.read_excel(BytesIO(r1.content)))
-                    if r2.content[:2] == b"PK":
-                        dfs_union.append(pd.read_excel(BytesIO(r2.content)))
+                    if bin_pend: dfs_union.append(pd.read_excel(BytesIO(bin_pend)))
+                    if bin_rel: dfs_union.append(pd.read_excel(BytesIO(bin_rel)))
 
                     if not dfs_union:
-                        st.warning("⚠️ Sin pendientes ni relecturas disponibles en este momento.")
+                        st.warning("⚠️ Sin datos descargados. Verifique que existan órdenes asignadas.")
                         st.stop()
 
                     df_actual = pd.concat(dfs_union, ignore_index=True)
 
-                    # =========================================================
-                    # CAMBIO AQUÍ: Buscar 'resultado' o 'Resultado' de forma segura
-                    # =========================================================
+                    # FILTRO EXACTO SOLICITADO: COLUMNA U ('Resultado') EN BLANCO
                     col_resultado = None
                     for col in df_actual.columns:
                         if str(col).lower() == "resultado":
@@ -329,27 +297,23 @@ if st.session_state["logueado"]:
                             break
 
                     if col_resultado:
-                        # Filtra dejando SOLO las celdas vacías, NaN o con espacios
                         df_actual = df_actual[
                             df_actual[col_resultado].isna() | 
                             (df_actual[col_resultado].astype(str).str.strip() == "")
                         ]
-                    # =========================================================
-
                 else:
-                    r = session.get(url_actual, headers=HEADERS, timeout=180)
-                    if r.content[:2] != b"PK":
-                        st.warning("⚠️ Sin registros en el periodo actual.")
+                    bin_actual = descargar_excel_seguro(url_actual)
+                    if not bin_actual:
+                        st.error("❌ No se pudo descargar el archivo actual. Sesión inaccesible.")
                         st.stop()
-                    df_actual = pd.read_excel(BytesIO(r.content))
+                    df_actual = pd.read_excel(BytesIO(bin_actual))
 
             if df_actual.empty:
-                st.warning("⚠️ No quedan registros tras aplicar la limpieza de celdas vacías en 'Resultado'.")
+                st.warning("⚠️ No quedan registros tras limpiar la columna 'Resultado'.")
                 st.stop()
 
             st.success(f"✅ Registros base cargados: {len(df_actual):,}")
 
-            # Localizar columna de Suministro
             col_suministro = None
             for c in df_actual.columns:
                 if "suministro" in str(c).lower():
@@ -357,38 +321,31 @@ if st.session_state["logueado"]:
                     break
 
             if not col_suministro:
-                st.error("❌ No se encontró la columna de suministro en el archivo.")
+                st.error("❌ No existe columna de suministro")
                 st.stop()
 
             suministros = df_actual[col_suministro].astype(str).unique()
 
             # =================================================
-            # DECISIÓN E INFORME VISUAL DE LA ESTRATEGIA HISTÓRICA
+            # DESCARGAS HISTÓRICAS OPTIMIZADAS (CON AUTO-RECONEXIÓN INTERNA)
             # =================================================
             dfs_hist = []
             usar_por_suministro = (len(suministros) <= 100)
             progress = st.progress(0)
 
             if usar_por_suministro:
-                # Alerta visual explícita en pantalla
-                st.info(f"🔍 Estrategia activa: **HISTÓRICO POR SUMINISTRO** ({len(suministros)} elementos)")
+                st.info(f"🔍 Método de descarga: **HISTÓRICO POR SUMINISTRO** ({len(suministros)} elementos)")
                 texto_sum = ",".join(suministros)
                 total = len(periodos_seleccionados)
 
                 for i, periodo in enumerate(periodos_seleccionados):
-                    url_hist = (
-                        f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                        f"U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/{periodo}"
-                    )
-                    try:
-                        rh = session.get(url_hist, headers=HEADERS, timeout=180)
-                        if rh.content[:2] == b"PK":
-                            df_temp = pd.read_excel(BytesIO(rh.content))
-                            if not df_temp.empty:
-                                df_temp["periodo_historico"] = periodo
-                                dfs_hist.append(df_temp)
-                    except:
-                        pass
+                    url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/{periodo}"
+                    bin_h = descargar_excel_seguro(url_hist)
+                    if bin_h:
+                        df_temp = pd.read_excel(BytesIO(bin_h))
+                        if not df_temp.empty:
+                            df_temp["periodo_historico"] = periodo
+                            dfs_hist.append(df_temp)
                     progress.progress((i + 1) / total)
             else:
                 rutas_detectadas = []
@@ -405,37 +362,30 @@ if st.session_state["logueado"]:
                 elif modo == "POR RUTA":
                     rutas_detectadas = [codigo]
 
-                # Alerta visual explícita en pantalla
-                st.info(f"🔍 Estrategia activa: **HISTÓRICO POR RUTA** ({len(rutas_detectadas)} rutas mapeadas)")
+                st.info(f"🔍 Método de descarga: **HISTÓRICO POR RUTA** ({len(rutas_detectadas)} rutas mapeadas)")
                 total = len(rutas_detectadas) * len(periodos_seleccionados)
                 contador = 0
 
                 for ruta_hist in rutas_detectadas:
                     for periodo in periodos_seleccionados:
-                        url_hist = (
-                            f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/"
-                            f"U/{hoy}/{hoy}/0/0/0/{ruta_hist}/0/0/0/0/0/0/9/{periodo}"
-                        )
-                        try:
-                            rh = session.get(url_hist, headers=HEADERS, timeout=180)
-                            if rh.content[:2] == b"PK":
-                                df_temp = pd.read_excel(BytesIO(rh.content))
-                                df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros)]
-                                if not df_temp.empty:
-                                    df_temp["periodo_historico"] = periodo
-                                    dfs_hist.append(df_temp)
-                        except:
-                            pass
+                        url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta_hist}/0/0/0/0/0/0/9/{periodo}"
+                        bin_h = descargar_excel_seguro(url_hist)
+                        if bin_h:
+                            df_temp = pd.read_excel(BytesIO(bin_h))
+                            df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros)]
+                            if not df_temp.empty:
+                                df_temp["periodo_historico"] = periodo
+                                dfs_hist.append(df_temp)
                         contador += 1
                         progress.progress(contador / total)
 
             if not dfs_hist:
-                st.warning("⚠️ No se encontraron registros históricos en los periodos seleccionados.")
+                st.warning("⚠️ No se encontraron registros históricos válidos.")
                 st.stop()
 
             fusionado = pd.concat(dfs_hist, ignore_index=True)
 
-            # Extraer y limpiar georreferenciación histórica
+            # Procesar Coordenadas
             lat_col, lon_col = None, None
             for c in fusionado.columns:
                 cl = str(c).lower()
@@ -447,7 +397,7 @@ if st.session_state["logueado"]:
             fusionado = fusionado.dropna(subset=[lat_col, lon_col])
             fusionado = fusionado[(fusionado[lat_col] != 0) & (fusionado[lon_col] != 0)]
 
-            # Algoritmo de mínima dispersión (Haversine)
+            # Algoritmo Mínima Dispersión
             resultados = []
             grupos = fusionado.groupby(col_suministro)
             progress_gis = st.progress(0)
@@ -486,7 +436,6 @@ if st.session_state["logueado"]:
                 })
                 progress_gis.progress((i + 1) / total_grupos)
 
-            # Consolidación final y descarga
             df_gps = pd.DataFrame(resultados)
             df_final = df_actual.merge(df_gps, on=col_suministro, how="left")
 
@@ -494,20 +443,19 @@ if st.session_state["logueado"]:
             with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
                 df_final.to_excel(writer, index=False, sheet_name="GIS")
 
-            excel_data = output.getvalue()
             st.download_button(
                 "📥 DESCARGAR EXCEL",
-                data=excel_data,
+                data=output.getvalue(),
                 file_name=f"GIS_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
-            # Renderizado de Mapas
+            # Mapa
             st.subheader("🗺️ MAPA GIS")
             df_mapa = df_final.dropna(subset=["latitud_validada", "longitud_validada"])
 
             if df_mapa.empty:
-                st.warning("⚠️ No quedan coordenadas mapeables tras los procesos de validación.")
+                st.warning("⚠️ No quedan coordenadas válidas para mostrar.")
                 st.stop()
 
             centro_lat = df_mapa["latitud_validada"].median()
@@ -516,11 +464,11 @@ if st.session_state["logueado"]:
             mapa = folium.Map(location=[centro_lat, centro_lon], zoom_start=13, tiles=None)
             plugins.Fullscreen().add_to(mapa)
 
-            folium.TileLayer("OpenStreetMap", name="Mapa Base").add_to(mapa)
+            folium.TileLayer("OpenStreetMap", name="Mapa").add_to(mapa)
             folium.TileLayer(
                 tiles="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
                 attr="Google",
-                name="Vista Satélite"
+                name="Satélite"
             ).add_to(mapa)
 
             cluster = MarkerCluster(disableClusteringAtZoom=12, showCoverageOnHover=False).add_to(mapa)
@@ -530,7 +478,7 @@ if st.session_state["logueado"]:
                     f"<b>Suministro:</b> {row[col_suministro]}<br>"
                     f"<b>Estado:</b> {row['estado_gps']}<br>"
                     f"<b>Dispersión:</b> {row['dispersion_m']} m<br>"
-                    f"<a href='{row['google_maps']}' target='_blank'>🌍 Abrir en Google Maps</a>"
+                    f"<a href='{row['google_maps']}' target='_blank'>🌍 Maps</a>"
                 )
                 folium.Marker(
                     location=[row["latitud_validada"], row["longitud_validada"]],
@@ -541,4 +489,4 @@ if st.session_state["logueado"]:
             components.html(mapa._repr_html_(), height=850, scrolling=True)
 
         except Exception as e:
-            st.error(f"Error general en el hilo de ejecución: {e}")
+            st.error(f"Error general en el proceso: {e}")
