@@ -290,6 +290,9 @@ if st.session_state["logueado"]:
                     df_actual = pd.concat(dfs_union, ignore_index=True)
 
                     # FILTRO EXACTO SOLICITADO: COLUMNA U ('Resultado') EN BLANCO
+                  # ==========================================================
+                    # FILTRO FLEXIBLE DE COLUMNA 'RESULTADO'
+                    # ==========================================================
                     col_resultado = None
                     for col in df_actual.columns:
                         if str(col).lower() == "resultado":
@@ -297,10 +300,26 @@ if st.session_state["logueado"]:
                             break
 
                     if col_resultado:
-                        df_actual = df_actual[
+                        # Identificamos los pendientes
+                        mask_pendientes = (
                             df_actual[col_resultado].isna() | 
                             (df_actual[col_resultado].astype(str).str.strip() == "")
-                        ]
+                        )
+                        
+                        # Si NO hay nada pendiente, avisamos pero no detenemos el proceso
+                        if df_actual[mask_pendientes].empty:
+                            st.warning("⚠️ No se encontraron órdenes pendientes (Columna 'Resultado' llena).")
+                            # Damos la opción de continuar con todo o parar
+                            if not st.checkbox("¿Deseas procesar el histórico completo (incluyendo los que ya tienen resultado)?"):
+                                st.stop()
+                            st.info("Procesando todas las órdenes disponibles...")
+                        else:
+                            df_actual = df_actual[mask_pendientes]
+                            st.success(f"✅ Se filtraron {len(df_actual)} órdenes pendientes.")
+                    else:
+                        st.warning("⚠️ No se encontró la columna 'Resultado'. Se procesarán todos los registros.")
+
+
                 else:
                     bin_actual = descargar_excel_seguro(url_actual)
                     if not bin_actual:
