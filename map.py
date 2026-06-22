@@ -326,28 +326,38 @@ if st.session_state["logueado"]:
 
             suministros = df_actual[col_suministro].astype(str).unique()
 
-            # =================================================
-            # DESCARGAS HISTÓRICAS OPTIMIZADAS (CON AUTO-RECONEXIÓN INTERNA)
-            # =================================================
+         
+           # ==============================================================================
+            # DESCARGAS HISTÓRICAS OPTIMIZADAS (Con tolerancia a periodos vacíos)
+            # ==============================================================================
             dfs_hist = []
             usar_por_suministro = (len(suministros) <= 100)
             progress = st.progress(0)
 
             if usar_por_suministro:
-                st.info(f"🔍 Método de descarga: **HISTÓRICO POR SUMINISTRO** ({len(suministros)} elementos)")
+                st.info(f"🔍 Método: HISTÓRICO POR SUMINISTRO ({len(suministros)} elementos)")
                 texto_sum = ",".join(suministros)
                 total = len(periodos_seleccionados)
 
                 for i, periodo in enumerate(periodos_seleccionados):
                     url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/{periodo}"
                     bin_h = descargar_excel_seguro(url_hist)
+                    
                     if bin_h:
-                        df_temp = pd.read_excel(BytesIO(bin_h))
-                        if not df_temp.empty:
-                            df_temp["periodo_historico"] = periodo
-                            dfs_hist.append(df_temp)
+                        try:
+                            df_temp = pd.read_excel(BytesIO(bin_h))
+                            # Validar que no esté vacío y contenga datos reales
+                            if not df_temp.empty and len(df_temp) > 0:
+                                df_temp["periodo_historico"] = periodo
+                                dfs_hist.append(df_temp)
+                            else:
+                                st.warning(f"⚠️ Periodo {periodo}: Sin órdenes encontradas.")
+                        except Exception as e:
+                            st.error(f"⚠️ Error procesando {periodo}: {e}")
                     progress.progress((i + 1) / total)
+
             else:
+                # Lógica para POR RUTA (También con validación)
                 rutas_detectadas = []
                 if modo == "POR LECTURISTA":
                     for c in df_actual.columns:
@@ -356,13 +366,12 @@ if st.session_state["logueado"]:
                             for rt in rutas:
                                 if "-" in rt:
                                     cod = rt.split("-")[0].strip()
-                                    if cod.isdigit():
-                                        rutas_detectadas.append(cod)
+                                    if cod.isdigit(): rutas_detectadas.append(cod)
                             break
                 elif modo == "POR RUTA":
                     rutas_detectadas = [codigo]
 
-                st.info(f"🔍 Método de descarga: **HISTÓRICO POR RUTA** ({len(rutas_detectadas)} rutas mapeadas)")
+                st.info(f"🔍 Método: HISTÓRICO POR RUTA ({len(rutas_detectadas)} rutas)")
                 total = len(rutas_detectadas) * len(periodos_seleccionados)
                 contador = 0
 
@@ -371,19 +380,26 @@ if st.session_state["logueado"]:
                         url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta_hist}/0/0/0/0/0/0/9/{periodo}"
                         bin_h = descargar_excel_seguro(url_hist)
                         if bin_h:
-                            df_temp = pd.read_excel(BytesIO(bin_h))
-                            df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros)]
-                            if not df_temp.empty:
-                                df_temp["periodo_historico"] = periodo
-                                dfs_hist.append(df_temp)
+                            try:
+                                df_temp = pd.read_excel(BytesIO(bin_h))
+                                df_temp = df_temp[df_temp[col_suministro].astype(str).isin(suministros)]
+                                if not df_temp.empty and len(df_temp) > 0:
+                                    df_temp["periodo_historico"] = periodo
+                                    dfs_hist.append(df_temp)
+                            except:
+                                pass
                         contador += 1
                         progress.progress(contador / total)
 
+            # VALIDACIÓN FINAL: Si tras revisar todos los periodos no hay nada, detenemos
             if not dfs_hist:
-                st.warning("⚠️ No se encontraron registros históricos válidos.")
+                st.error("❌ No se encontraron datos en NINGUNO de los periodos seleccionados.")
                 st.stop()
-
-            fusionado = pd.concat(dfs_hist, ignore_index=True)
+            else:
+                st.success(f"✅ Se consolidaron datos de {len(dfs_hist)} periodos exitosamente.")
+                fusionado = pd.concat(dfs_hist, ignore_index=True)
+                # ... resto de tu código (Procesar coordenadas, Algoritmo Mínima Dispersión, etc.)
+                
 
             # Procesar Coordenadas
             lat_col, lon_col = None, None
