@@ -128,11 +128,10 @@ if "logueado" not in st.session_state:
 if not st.session_state["logueado"]:
     st.subheader("🔐 ACCESO SISTEMA SIGOF")
     
-    # 💡 Consejo: Puedes escribir tus credenciales directamente en value="" para no teclearlas siempre
     usuario = st.text_input("Usuario SIGOF", value="", key="storage_user")
     password = st.text_input("Contraseña", type="password", value="", key="storage_pass")
 
-    if st.button("INICIAR SESIÓN"):
+    if st.button("INICIAR SESION"):
         if usuario and password:
             with st.spinner("Conectando de forma segura con SIGOF..."):
                 sesion_valida = ejecutar_login_sigof(usuario, password)
@@ -211,13 +210,11 @@ if st.session_state["logueado"]:
         archivo_excel = st.file_uploader("O cargar Excel", type=["xlsx"])
 
     # =====================================================
-    # PERIODOS HISTÓRICOS
+    # PERIODOS HISTÓRICOS AUTOMÁTICOS
     # =====================================================
     actual = datetime.now()
-    mes_1 = (actual - relativedelta(months=1)).strftime("%Y%m")
-    mes_2 = (actual - relativedelta(months=2)).strftime("%Y%m")
-
-    default_periodos = list(dict.fromkeys(["202409", "202410", "202508", "202509", mes_1, mes_2]))
+    mes_anterior = (actual - relativedelta(months=1)).strftime("%Y%m")
+    
     periodos = []
     anio = actual.year
     mes = actual.month
@@ -229,7 +226,8 @@ if st.session_state["logueado"]:
             mes = 12
             anio -= 1
 
-    periodos_seleccionados = st.multiselect("Históricos", periodos, default=default_periodos)
+    # Por defecto selecciona automáticamente el mes cerrado inmediatamente anterior (ej: 202605)
+    periodos_seleccionados = st.multiselect("Históricos", periodos, default=[mes_anterior])
 
     # =====================================================
     # PROCESAR ACCIÓN GIS
@@ -237,24 +235,25 @@ if st.session_state["logueado"]:
     if st.button("🛰️ PROCESAR GIS"):
         try:
             hoy = datetime.now().strftime("%Y-%m-%d")
+            p_descarga = periodos_seleccionados[0] if periodos_seleccionados else mes_anterior
 
             if modo == "POR RUTA":
                 if tipo_filtro == "PENDIENTES":
-                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/0"
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/{p_descarga}"
                 elif tipo_filtro == "PENDIENTES + RELECTURAS":
-                    url_pend = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/0"
-                    url_rel = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/REL/0/9/0"
+                    url_pend = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/{p_descarga}"
+                    url_rel = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/REL/0/9/{p_descarga}"
                 else:
-                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/0"
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/{p_descarga}"
 
             elif modo == "POR LECTURISTA":
                 if tipo_filtro == "PENDIENTES":
-                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/0"
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/{p_descarga}"
                 elif tipo_filtro == "PENDIENTES + RELECTURAS":
-                    url_pend = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/0"
-                    url_rel = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/REL/0/9/0"
+                    url_pend = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/{p_descarga}"
+                    url_rel = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/REL/0/9/{p_descarga}"
                 else:
-                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/0"
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/{p_descarga}"
             else:
                 lista_sum = []
                 if suministros_manual.strip():
@@ -269,10 +268,10 @@ if st.session_state["logueado"]:
                     st.stop()
 
                 texto_sum = ",".join(lista_sum)
-                url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/0"
+                url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/{p_descarga}"
 
             # =================================================
-            # EJECUCIÓN DE DESCARGAS USANDO LA FUNCIÓN OPTIMIZADA
+            # EJECUCIÓN DE DESCARGAS BASE
             # =================================================
             with st.spinner("📥 Descargando base..."):
                 if modo in ["POR RUTA", "POR LECTURISTA"] and tipo_filtro == "PENDIENTES + RELECTURAS":
@@ -284,100 +283,79 @@ if st.session_state["logueado"]:
                     if bin_rel: dfs_union.append(pd.read_excel(BytesIO(bin_rel)))
 
                     if not dfs_union:
-                        st.warning("⚠️ Sin datos descargados. Verifique que existan órdenes asignadas.")
+                        st.warning(f"⚠️ Sin datos descargados para el periodo {p_descarga}. Verifique que existan órdenes.")
                         st.stop()
 
                     df_actual = pd.concat(dfs_union, ignore_index=True)
 
-                
-                 # ==========================================================
-                    # FILTRO INTELIGENTE DE COLUMNA 'RESULTADO'
-                    # ==========================================================
-                    col_resultado = None
-                    for col in df_actual.columns:
-                        if str(col).lower() == "resultado":
-                            col_resultado = col
-                            break
+                    # FILTRO DE COLUMNA RESULTADO
+                    col_resultado = next((col for col in df_actual.columns if str(col).lower() == "resultado"), None)
 
                     if col_resultado:
-                        # Identificamos registros realmente pendientes
-                        mask_pendientes = (
-                            df_actual[col_resultado].isna() | 
-                            (df_actual[col_resultado].astype(str).str.strip() == "")
-                        )
-                        
-                        # Si hay pendientes, filtramos. Si no hay, informamos y preguntamos qué hacer.
-                        if df_actual[mask_pendientes].empty:
-                            st.warning("⚠️ Todas las órdenes descargadas ya tienen un 'Resultado'.")
-                            continuar = st.checkbox("¿Deseas procesar todas las órdenes (incluyendo las ya finalizadas)?")
-                            if not continuar:
-                                st.info("El proceso se ha detenido porque no hay órdenes pendientes.")
+                        df_pendientes = df_actual[df_actual[col_resultado].isna() | (df_actual[col_resultado].astype(str).str.strip() == "")]
+                        if df_pendientes.empty:
+                            st.warning(f"⚠️ No quedan registros PENDIENTES tras limpiar la columna 'Resultado' para el periodo {p_descarga}.")
+                            if not st.checkbox("¿Deseas procesar todas las órdenes de este periodo (incluyendo las completadas)?", value=True):
                                 st.stop()
-                            else:
-                                st.info("Continuando con el procesamiento de todas las órdenes...")
                         else:
-                            df_actual = df_actual[mask_pendientes]
-                            st.success(f"✅ Filtrado aplicado: {len(df_actual)} órdenes pendientes encontradas.")
-                    else:
-                        st.warning("⚠️ No se encontró la columna 'Resultado'. Se procesarán todos los registros existentes.")
-
+                            df_actual = df_pendientes
                 else:
                     bin_actual = descargar_excel_seguro(url_actual)
                     if not bin_actual:
-                        st.error("❌ No se pudo descargar el archivo actual. Sesión inaccesible.")
+                        st.error(f"❌ No se pudo descargar el archivo para el periodo {p_descarga}. Verifique disponibilidad.")
                         st.stop()
                     df_actual = pd.read_excel(BytesIO(bin_actual))
 
+                    col_resultado = next((col for col in df_actual.columns if str(col).lower() == "resultado"), None)
+                    if col_resultado:
+                        df_pendientes = df_actual[df_actual[col_resultado].isna() | (df_actual[col_resultado].astype(str).str.strip() == "")]
+                        if df_pendientes.empty:
+                            st.warning(f"⚠️ No quedan registros PENDIENTES tras limpiar la columna 'Resultado' para el periodo {p_descarga}.")
+                            if not st.checkbox("¿Deseas procesar todas las órdenes de este periodo (incluyendo las completadas)?", value=True):
+                                st.stop()
+                        else:
+                            df_actual = df_pendientes
+
             if df_actual.empty:
-                st.warning("⚠️ No quedan registros tras limpiar la columna 'Resultado'.")
+                st.warning("⚠️ No hay registros base para procesar en este estado.")
                 st.stop()
 
             st.success(f"✅ Registros base cargados: {len(df_actual):,}")
 
-            col_suministro = None
-            for c in df_actual.columns:
-                if "suministro" in str(c).lower():
-                    col_suministro = c
-                    break
-
+            col_suministro = next((c for c in df_actual.columns if "suministro" in str(c).lower()), None)
             if not col_suministro:
                 st.error("❌ No existe columna de suministro")
                 st.stop()
 
             suministros = df_actual[col_suministro].astype(str).unique()
 
-         
-           # ==============================================================================
-            # DESCARGAS HISTÓRICAS OPTIMIZADAS (Con tolerancia a periodos vacíos)
-            # ==============================================================================
+            # =================================================
+            # DESCARGAS HISTÓRICAS CON RESILIENCIA INTERNA
+            # =================================================
             dfs_hist = []
             usar_por_suministro = (len(suministros) <= 100)
             progress = st.progress(0)
 
             if usar_por_suministro:
-                st.info(f"🔍 Método: HISTÓRICO POR SUMINISTRO ({len(suministros)} elementos)")
+                st.info(f"🔍 Método de descarga: **HISTÓRICO POR SUMINISTRO** ({len(suministros)} elementos)")
                 texto_sum = ",".join(suministros)
                 total = len(periodos_seleccionados)
 
                 for i, periodo in enumerate(periodos_seleccionados):
                     url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/{periodo}"
                     bin_h = descargar_excel_seguro(url_hist)
-                    
                     if bin_h:
                         try:
                             df_temp = pd.read_excel(BytesIO(bin_h))
-                            # Validar que no esté vacío y contenga datos reales
                             if not df_temp.empty and len(df_temp) > 0:
                                 df_temp["periodo_historico"] = periodo
                                 dfs_hist.append(df_temp)
                             else:
-                                st.warning(f"⚠️ Periodo {periodo}: Sin órdenes encontradas.")
-                        except Exception as e:
-                            st.error(f"⚠️ Error procesando {periodo}: {e}")
+                                st.caption(f"ℹ️ Periodo {periodo}: Sin órdenes encontradas.")
+                        except:
+                            pass
                     progress.progress((i + 1) / total)
-
             else:
-                # Lógica para POR RUTA (También con validación)
                 rutas_detectadas = []
                 if modo == "POR LECTURISTA":
                     for c in df_actual.columns:
@@ -386,12 +364,13 @@ if st.session_state["logueado"]:
                             for rt in rutas:
                                 if "-" in rt:
                                     cod = rt.split("-")[0].strip()
-                                    if cod.isdigit(): rutas_detectadas.append(cod)
+                                    if cod.isdigit():
+                                        rutas_detectadas.append(cod)
                             break
                 elif modo == "POR RUTA":
                     rutas_detectadas = [codigo]
 
-                st.info(f"🔍 Método: HISTÓRICO POR RUTA ({len(rutas_detectadas)} rutas)")
+                st.info(f"🔍 Método de descarga: **HISTÓRICO POR RUTA** ({len(rutas_detectadas)} rutas mapeadas)")
                 total = len(rutas_detectadas) * len(periodos_seleccionados)
                 contador = 0
 
@@ -411,15 +390,11 @@ if st.session_state["logueado"]:
                         contador += 1
                         progress.progress(contador / total)
 
-            # VALIDACIÓN FINAL: Si tras revisar todos los periodos no hay nada, detenemos
             if not dfs_hist:
-                st.error("❌ No se encontraron datos en NINGUNO de los periodos seleccionados.")
+                st.warning("⚠️ No se encontraron registros históricos consolidados en los periodos seleccionados.")
                 st.stop()
-            else:
-                st.success(f"✅ Se consolidaron datos de {len(dfs_hist)} periodos exitosamente.")
-                fusionado = pd.concat(dfs_hist, ignore_index=True)
-                # ... resto de tu código (Procesar coordenadas, Algoritmo Mínima Dispersión, etc.)
-                
+
+            fusionado = pd.concat(dfs_hist, ignore_index=True)
 
             # Procesar Coordenadas
             lat_col, lon_col = None, None
