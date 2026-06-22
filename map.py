@@ -289,9 +289,9 @@ if st.session_state["logueado"]:
 
                     df_actual = pd.concat(dfs_union, ignore_index=True)
 
-                    # FILTRO EXACTO SOLICITADO: COLUMNA U ('Resultado') EN BLANCO
-                  # ==========================================================
-                    # FILTRO FLEXIBLE DE COLUMNA 'RESULTADO'
+                
+                 # ==========================================================
+                    # FILTRO INTELIGENTE DE COLUMNA 'RESULTADO'
                     # ==========================================================
                     col_resultado = None
                     for col in df_actual.columns:
@@ -300,25 +300,26 @@ if st.session_state["logueado"]:
                             break
 
                     if col_resultado:
-                        # Identificamos los pendientes
+                        # Identificamos registros realmente pendientes
                         mask_pendientes = (
                             df_actual[col_resultado].isna() | 
                             (df_actual[col_resultado].astype(str).str.strip() == "")
                         )
                         
-                        # Si NO hay nada pendiente, avisamos pero no detenemos el proceso
+                        # Si hay pendientes, filtramos. Si no hay, informamos y preguntamos qué hacer.
                         if df_actual[mask_pendientes].empty:
-                            st.warning("⚠️ No se encontraron órdenes pendientes (Columna 'Resultado' llena).")
-                            # Damos la opción de continuar con todo o parar
-                            if not st.checkbox("¿Deseas procesar el histórico completo (incluyendo los que ya tienen resultado)?"):
+                            st.warning("⚠️ Todas las órdenes descargadas ya tienen un 'Resultado'.")
+                            continuar = st.checkbox("¿Deseas procesar todas las órdenes (incluyendo las ya finalizadas)?")
+                            if not continuar:
+                                st.info("El proceso se ha detenido porque no hay órdenes pendientes.")
                                 st.stop()
-                            st.info("Procesando todas las órdenes disponibles...")
+                            else:
+                                st.info("Continuando con el procesamiento de todas las órdenes...")
                         else:
                             df_actual = df_actual[mask_pendientes]
-                            st.success(f"✅ Se filtraron {len(df_actual)} órdenes pendientes.")
+                            st.success(f"✅ Filtrado aplicado: {len(df_actual)} órdenes pendientes encontradas.")
                     else:
-                        st.warning("⚠️ No se encontró la columna 'Resultado'. Se procesarán todos los registros.")
-
+                        st.warning("⚠️ No se encontró la columna 'Resultado'. Se procesarán todos los registros existentes.")
 
                 else:
                     bin_actual = descargar_excel_seguro(url_actual)
