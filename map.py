@@ -208,17 +208,16 @@ if st.session_state["logueado"]:
         if mes == 0: mes = 12; anio -= 1
 
     # =====================================================
-    # FILTROS DE PERIODOS SEPARADOS (CORRECCIÓN CLAVE)
+    # FILTROS DE PERIODOS SEPARADOS
     # =====================================================
     st.markdown("---")
     col_p1, col_p2 = st.columns(2)
     
     with col_p1:
-        # Define qué mes se va a consultar/procesar como base actual de trabajo
+        # Por defecto se selecciona el mes actual en curso
         periodo_base = st.selectbox("📅 Periodo Registro Base (Órdenes a trabajar)", periodos_lista, index=0)
     
     with col_p2:
-        # Define qué meses se descargarán para cruzar y buscar coordenadas históricas
         periodos_historicos = st.multiselect("📚 Históricos para búsqueda GIS (Coordenadas)", periodos_lista, default=[mes_anterior_str])
     st.markdown("---")
 
@@ -229,23 +228,26 @@ if st.session_state["logueado"]:
         try:
             hoy = datetime.now().strftime("%Y-%m-%d")
 
+            # CORRECCIÓN CLAVE: Si se selecciona el periodo actual, el parámetro para SIGOF debe ser "0"
+            p_base_param = "0" if periodo_base == mes_actual_str else periodo_base
+
             if modo == "POR RUTA":
                 if tipo_filtro == "PENDIENTES":
-                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/{periodo_base}"
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/{p_base_param}"
                 elif tipo_filtro == "PENDIENTES + RELECTURAS":
-                    url_pend = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/{periodo_base}"
-                    url_rel = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/REL/0/9/{periodo_base}"
+                    url_pend = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/LSC/0/9/{p_base_param}"
+                    url_rel = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/REL/0/9/{p_base_param}"
                 else:
-                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/{periodo_base}"
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{codigo}/0/0/0/0/0/0/9/{p_base_param}"
 
             elif modo == "POR LECTURISTA":
                 if tipo_filtro == "PENDIENTES":
-                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/{periodo_base}"
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/{p_base_param}"
                 elif tipo_filtro == "PENDIENTES + RELECTURAS":
-                    url_pend = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/{periodo_base}"
-                    url_rel = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/REL/0/9/{periodo_base}"
+                    url_pend = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/LSC/0/9/{p_base_param}"
+                    url_rel = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/REL/0/9/{p_base_param}"
                 else:
-                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/{periodo_base}"
+                    url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,L/{hoy}/{hoy}/0/0/0/0/0/{codigo}/0/0/0/0/9/{p_base_param}"
             else:
                 lista_sum = []
                 if suministros_manual.strip():
@@ -260,7 +262,7 @@ if st.session_state["logueado"]:
                     st.stop()
 
                 texto_sum = ",".join(lista_sum)
-                url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/{periodo_base}"
+                url_actual = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/{p_base_param}"
 
             # =================================================
             # DESCARGA DE REGISTRO BASE
@@ -323,7 +325,8 @@ if st.session_state["logueado"]:
                 total = len(periodos_historicos)
 
                 for i, p_hist in enumerate(periodos_historicos):
-                    url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/{p_hist}"
+                    p_hist_param = "0" if p_hist == mes_actual_str else p_hist
+                    url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U,S/{hoy}/{hoy}/0/0/0/0/{texto_sum}/0/0/0/0/0/9/{p_hist_param}"
                     bin_h = descargar_excel_seguro(url_hist)
                     if bin_h:
                         try:
@@ -354,7 +357,8 @@ if st.session_state["logueado"]:
 
                 for ruta_hist in rutas_detectadas:
                     for p_hist in periodos_historicos:
-                        url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta_hist}/0/0/0/0/0/0/9/{p_hist}"
+                        p_hist_param = "0" if p_hist == mes_actual_str else p_hist
+                        url_hist = f"http://sigof.distriluz.com.pe/plus/Reportes/ajax_ordenes_historico_xls/U/{hoy}/{hoy}/0/0/0/{ruta_hist}/0/0/0/0/0/0/9/{p_hist_param}"
                         bin_h = descargar_excel_seguro(url_hist)
                         if bin_h:
                             try:
